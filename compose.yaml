@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  frontend-build:
+    image: oven/bun:latest
+    working_dir: app/
+    volumes:
+      - ./client:/app
+      - frontend-static:/app/build-output
+    command: >
+      sh -c "bun i && bun run build && cp -r /app/build/* /app/build-output/"
+
+  backend:
+    build: ./server
+    container_name: backend
+    env_file: "./server/.env"
+    expose:
+      - "3000"
+    networks:
+      - webnet
+    depends_on:
+      - db
+
+  db:
+    image: postgres:latest
+    container_name: database
+    env_file: "./server/.env"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - webnet
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443" 
+    restart: always
+    volumes:
+      - frontend-static:/usr/share/nginx/html
+      - ./nginx/conf/:/etc/nginx/conf.d/:ro 
+      - ./certbot/www:/var/www/certbot/:ro
+    depends_on:
+      - frontend-build
+      - backend
+    networks:
+      - webnet
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/www/:/var/www/certbot/:rw
+      - ./certbot/conf/:/etc/letsencrypt/:rw
+    networks:
+      - webnet
+
+  volumes:
+    frontend-static:
+    postgres-data:
+
+  networks:
+    webnet:
