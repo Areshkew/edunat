@@ -1,38 +1,104 @@
-# create-svelte
+# Edunat Frontend
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/main/packages/create-svelte).
+## Primeros Pasos
 
-## Creating a project
+Sigue los pasos a continuación para configurar tu entorno de desarrollo y comenzar a trabajar con este proyecto.
 
-If you're seeing this, you've probably already done this step. Congrats!
+### 1. Inicializa el Proyecto
 
-```bash
-# create a new project in the current directory
-npm create svelte@latest
-
-# create a new project in my-app
-npm create svelte@latest my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Después de inicializar el proyecto, navega al nuevo directorio creado:
 
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+cd my-app
 ```
 
-## Building
+### 2. Instala las Dependencias
 
-To create a production version of your app:
+Usa Bun para instalar las dependencias del proyecto:
 
 ```bash
-npm run build
+bun install
 ```
 
-You can preview the production build with `npm run preview`.
+### 3. Inicia el Servidor de Desarrollo
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+Puedes iniciar el servidor de desarrollo con Bun usando el siguiente comando:
+
+```bash
+bun --bun run dev
+```
+
+Alternativamente, si prefieres usar Node.js en lugar de Bun, simplemente omite la bandera `--bun`:
+
+```bash
+bun run dev
+```
+
+#### Información del Servidor de Desarrollo
+
+Una vez que el servidor esté en funcionamiento, verás la siguiente salida:
+
+```
+VITE v4.4.9  ready in 895 ms
+
+➜  Local:   http://localhost:5173/
+➜  Network: use --host to expose
+➜  press h to show help
+```
+
+Visita [http://localhost:5173](http://localhost:5173) en tu navegador para ver el proyecto.
+
+Cualquier cambio que realices en los archivos (por ejemplo, `src/routes/+page.svelte`) se **recargará automáticamente** en el navegador.
+
+---
+
+## Preparando para Producción
+
+Sigue estos pasos para construir el proyecto para producción.
+
+### 1. Instala el Adaptador de SvelteKit para Bun
+
+Primero, necesitas agregar el adaptador adecuado para SvelteKit y Bun:
+
+```bash
+bun add -D svelte-adapter-bun
+```
+
+### 2. Actualiza la Configuración
+
+Ahora, realiza los siguientes cambios en tu archivo `svelte.config.js`:
+
+```js
+import adapter from "svelte-adapter-bun";
+import { vitePreprocess } from "@sveltejs/kit/vite";
+
+/** @type {import('@sveltejs/kit').Config} */
+const config = {
+  kit: {
+    adapter: adapter(),
+  },
+  preprocess: vitePreprocess(),
+};
+
+export default config;
+```
+
+### 3. Genera el Bundle de Producción
+
+Finalmente, para generar un bundle optimizado para producción, ejecuta el siguiente comando:
+
+```bash
+bun run build
+```
+
+Esto creará un paquete optimizado para tu proyecto.
+
+---
+
+## Notas Adicionales
+
+- **Desarrollo Local:** Visita [http://localhost:5173](http://localhost:5173) para ver tu aplicación ejecutándose localmente durante el desarrollo.
+- **Recarga Automática:** Los cambios que realices en los archivos fuente se reflejarán instantáneamente en tu navegador sin necesidad de actualizar manualmente.
+- **Producción:** Utiliza el comando `bun run build` para crear un paquete optimizado y listo para ser desplegado.
+
+¡Disfruta programando con SvelteKit y Bun! 🚀
