@@ -1,11 +1,16 @@
 from app.utils.db_utils import hash_password
+from datetime import datetime, timezone
 import os
 
-# Datos del usuario Root
-root_data = {
-    "DNI": "R000000",
-    "correo_electronico": os.getenv("ROOT_EMAIL"),
-    "usuario": os.getenv("ROOT_USER"),
-    "clave": hash_password( os.getenv("ROOT_PASSWORD") ),
-    "rol": 1
+# Datos del usuario Admin
+admin_data = {
+    "document_id": 0,
+    "email": os.getenv("ADMIN_EMAIL"),
+    "username": os.getenv("ADMIN_USER"),
+    "password": hash_password( os.getenv("ADMIN_PASSWORD") ),
+    "role": 1,
+    "name": "Admin",
+    "visibility" : 0,
+    "points" : 0,
+    "created_at": datetime.now(timezone.utc)
 }

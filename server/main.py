@@ -1,5 +1,8 @@
 from fastapi.staticfiles import StaticFiles
+#TODO: Add app controllers
+from app.controllers.user_controller import UserController
 from app.middleware.auth_middleware import AuthMiddleware
+from app.services.user_service import UserService
 from app.utils.class_utils import inject
 from app.utils.db_utils import create_tables, get_db_session
 from contextlib import asynccontextmanager
@@ -8,7 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn, os
 
-#@inject(controladores...)
+#TODO @inject(Controllers...)
+@inject(UserController)
 class ServerBootstrap:
     """
         ServerBootstrap es responsable de inicializar el servidor.
@@ -21,6 +25,7 @@ class ServerBootstrap:
     def __init__(self, app: FastAPI):
         self.app = app
         self.HOST = os.getenv("HOST")
+        self.app.include_router(self.usercontroller.route, prefix='/api') 
 
     def run(self):
         uvicorn.run(self.app, host=self.HOST, port=8000)
@@ -31,10 +36,10 @@ class ServerBootstrap:
         # Crear las tablas en la base de datos
         await create_tables(engine)
 
-        # Crear el usuario root
+        # Crear el usuario admin
         async for session in get_db_session():
             try:
-                #Servicio iniciar db
+                await UserService.initialize_db(session)
                 pass
             finally:
                 await session.close()
@@ -49,7 +54,6 @@ def main():
                         allow_methods=["*"],
                         allow_headers=["*"])
     app.add_middleware(AuthMiddleware)
-    app.mount("/images", StaticFiles(directory="images"), name="static")
     ServerBootstrap(app).run()
 
 if __name__ == "__main__":

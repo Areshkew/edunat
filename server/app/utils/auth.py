@@ -2,8 +2,8 @@ from datetime import timedelta, datetime, timezone
 from fastapi import HTTPException, status
 import jwt, pathlib
 
-PUBLIC_KEY = pathlib.Path("keys/public_key.pem").read_text(encoding='utf-8')
-PRIVATE_KEY = pathlib.Path("keys/private_key.pem").read_text(encoding='utf-8')
+PUBLIC_KEY = pathlib.Path("server/keys/public_key.pem").read_text(encoding='utf-8')
+PRIVATE_KEY = pathlib.Path("server/keys/private_key.pem").read_text(encoding='utf-8')
 ALGORITHM = "RS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 

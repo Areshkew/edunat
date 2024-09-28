@@ -2,6 +2,5 @@ sources.md
 **/.env
 **/node_modules
 **/__pycache__/
-/server/scripts/json/
 /server/keys
-/server/images
+/server/tests
