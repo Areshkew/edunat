@@ -2,27 +2,22 @@
 
 Esta sección contiene documentación importante relacionada al proyecto, incluyendo diagramas y recursos adicionales que te ayudarán a entender el diseño del sistema y la estructura.
 
-## Documentos Disponibles
-
-- **Diagrama Entidad-Relación**: 
-  - [Ver Diagrama ER](https://drive.google.com/file/d/18j9nvpHImI3ncHKRexZ6bIHnivbj6tfo/view?usp=sharing)
-
-
-# Documentación de la API de Edunat.
+---
 
 ## Tabla de Contenidos
 1. [Introducción](#introducción)
-2. [Configuración e Inicialización](#configuración-e-inicialización)
+2. [Documentos](#documentos)
+3. [Configuración e Inicialización](#configuración-e-inicialización)
     - [Pre-requisitos](#pre-requisitos)
     - [Clonacion backend](#clonacionbackend)
-3. [Autenticación](#autenticación)
-4. [Endpoints](#endpoints)
+4. [Autenticación](#autenticación)
+5. [Endpoints](#endpoints)
     - [Login](#login)
     - [Registro (Signup)](#registro-signup)
-5. [Ejemplos](#ejemplos)
-6. [Manejo de Errores](#manejo-de-errores)
-7. [Seguridad](#seguridad)
-8. [Versionado](#versionado)
+6. [Ejemplos](#ejemplos)
+7. [Manejo de Errores](#manejo-de-errores)
+8. [Seguridad](#seguridad)
+9. [Versionado](#versionado)
  
  
 ---
@@ -38,6 +33,12 @@ Esta sección contiene documentación importante relacionada al proyecto, incluy
 
 ---
 
+## Documentos Disponibles
+
+- **Diagrama Entidad-Relación**: 
+  - [Ver Diagrama ER](https://drive.google.com/file/d/18j9nvpHImI3ncHKRexZ6bIHnivbj6tfo/view?usp=sharing)
+
+---
 
 
 ## Configuración e Inicialización
@@ -290,5 +291,3 @@ Todo el versionado será gestionado a través de GitHub. Las futuras versiones d
 ## Contacto
 
 Para más asistencia o para reportar problemas, contacta al equipo de desarrollo.
-
----

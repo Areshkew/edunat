@@ -1,0 +1,16 @@
+.page-header{
+    padding-top: 2rem;
+}
+
+.content{
+    padding: 2rem 0;
+}
+.content__section{
+    padding-top: 1rem;
+}
+.content__list{
+    padding-left: 3rem;
+}
+.content__list li::marker{
+    font-weight: bolder;
+}
