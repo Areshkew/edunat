@@ -37,6 +37,12 @@ Esta sección contiene documentación importante relacionada al proyecto, incluy
 
 - **Diagrama Entidad-Relación**: 
   - [Ver Diagrama ER](https://drive.google.com/file/d/18j9nvpHImI3ncHKRexZ6bIHnivbj6tfo/view?usp=sharing)
+ 
+- **Diagramas Caso de uso UML**: 
+  - [Ver Diagrama UML](https://drive.google.com/file/d/1enegtnJgOjpJInpZ8HU3f3jGylfeNz-U/view?usp=sharing)
+
+- **Flujo de Autenticacion**: 
+  - [Ver Flujo Autenticacion](https://drive.google.com/file/d/1jpkQXV-yIHYrcscV8kWIer6_Q8oFTg4K/view?usp=sharing)
 
 ---
 
