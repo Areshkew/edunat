@@ -1,0 +1,539 @@
+import { Form, useActionData, useLoaderData } from "@remix-run/react";
+import { json, redirect } from "@remix-run/node";
+import { useState, useEffect } from "react";
+import { 
+  User, Calendar, MapPin, Home, 
+  Book, Image, FileText, MessageSquare, 
+  Link as LinkIcon, Smartphone, Languages, ChevronLeft, 
+  ChevronRight, CheckCircle, AlertTriangle, AtSign, UserCheck,
+  Map, Info, GraduationCap, School, Briefcase, Building2
+} from 'lucide-react';
+import { getSession } from "../../utils/session.server";
+
+const API_USERDATA_URL = "http://localhost:8000/api/user/userdata";
+const API_EDITACCOUNT_URL = "http://localhost:8000/api/user/editaccount";
+
+// Validation functions
+const validateStep1 = (data) => {
+  const errors = {};
+  
+  if (!data.document_id) {
+    errors.document_id = "El documento es requerido";
+  } else if (!/^\d+$/.test(data.document_id)) {
+    errors.document_id = "Solo se permiten números";
+  } else if (data.document_id.length > 10) {
+    errors.document_id = "Máximo 10 dígitos";
+  }
+
+  if (!data.name) {
+    errors.name = "El nombre es requerido";
+  } else if (data.name.length > 64) {
+    errors.name = "Máximo 64 caracteres";
+  }
+
+  if (!data.email) {
+    errors.email = "El correo es requerido";
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    errors.email = "Correo inválido";
+  } else if (data.email.length > 254) {
+    errors.email = "Máximo 254 caracteres";
+  }
+
+  if (!data.username) {
+    errors.username = "El usuario es requerido";
+  } else if (data.username.length > 32) {
+    errors.username = "Máximo 32 caracteres";
+  }
+
+  if (!data.phone_number) {
+    errors.phone_number = "El teléfono es requerido";
+  }else if (!/^\d+$/.test(data.phone_number)) {
+    errors.phone_number = "Solo se permiten números";
+  }else if (data.phone_number.length > 10) {
+    errors.phone_number = "Máximo 10 dígitos";
+  }
+
+  return errors;
+};
+
+const validateStep2 = (data) => {
+  const errors = {};
+  
+  if (data.birth_city && data.birth_city.length > 64) {
+    errors.birth_city = "Máximo 64 caracteres";
+  }
+  
+  if (data.residence_city && data.residence_city.length > 64) {
+    errors.residence_city = "Máximo 64 caracteres";
+  }
+  
+  if (data.address && data.address.length > 128) {
+    errors.address = "Máximo 128 caracteres";
+  }
+
+  return errors;
+};
+
+const validateStep3 = (data) => {
+  const errors = {};
+  
+  if (data.photo && data.photo.length > 255) {
+    errors.photo = "URL demasiado larga";
+  }
+  
+  if (data.webpage && data.webpage.length > 255) {
+    errors.webpage = "URL demasiado larga";
+  }
+  
+  if (data.whatsapp && data.whatsapp.length > 10) {
+    errors.whatsapp = "Máximo 10 dígitos";
+  }
+  
+  if (data.about && data.about.length > 255) {
+    errors.about = "Máximo 255 caracteres";
+  }
+
+  return errors;
+};
+
+export async function loader({ request }) {
+  const cookieHeader = request.headers.get("Cookie");
+  const session = await getSession(cookieHeader);
+  const token = session.get("token");
+
+  if (!token) {
+    throw new Response("Unauthorized", { status: 401 });
+  }
+
+  const userFields = [
+    "document_id", "email", "username", "name", "academic_level", 
+    "phone_number", "gender", "photo", "visibility", "needs", 
+    "offers", "webpage", "whatsapp", "birth_date", "birth_city", 
+    "language", "residence_city", "address", "about"
+  ];
+
+  const response = await fetch(API_USERDATA_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(userFields),
+  });
+
+  if (!response.ok) {
+    throw new Response("Failed to fetch user data", { status: response.status });
+  }
+
+  return json(await response.json());
+}
+
+export async function action({ request }) {
+  const formData = await request.formData();
+  const cookieHeader = request.headers.get("Cookie");
+  const session = await getSession(cookieHeader);
+  const token = session.get("token");
+
+  if (!token) {
+    throw new Response("Unauthorized", { status: 401 });
+  }
+
+  const updatedFields = {};
+  for (const [key, value] of formData.entries()) {
+    if (value && value !== "") {
+      updatedFields[key] = value;
+    }
+  }
+
+  const response = await fetch(API_EDITACCOUNT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(updatedFields),
+  });
+
+  if (!response.ok) {
+    return json({ error: "No se pudo actualizar el perfil." });
+  }
+
+  return redirect("/configurar");
+}
+
+export default function EditarPerfil() {
+  const actionData = useActionData();
+  const userData = useLoaderData();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [formData, setFormData] = useState(userData || {});
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const validateCurrentStep = () => {
+    let currentErrors = {};
+    switch (currentStep) {
+      case 0:
+        currentErrors = validateStep1(formData);
+        break;
+      case 1:
+        currentErrors = validateStep2(formData);
+        break;
+      case 2:
+        currentErrors = validateStep3(formData);
+        break;
+    }
+    setErrors(currentErrors);
+    return Object.keys(currentErrors).length === 0;
+  };
+
+  const nextStep = () => {
+    if (validateCurrentStep()) {
+      setCurrentStep((prev) => Math.min(prev + 1, 2));
+    }
+  };
+
+  const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 0));
+
+  const progressPercentage = ((currentStep + 1) / 3) * 100;
+
+  const renderInput = (name, label, icon, type = "text", options = {}) => {
+    const isTextarea = type === "textarea";
+    return (
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          {label}
+        </label>
+        <div className="relative">
+          <div className={`absolute ${isTextarea ? 'top-3' : 'inset-y-0'} left-0 pl-3 flex items-center pointer-events-none text-gray-500`}>
+            {icon}
+          </div>
+          {isTextarea ? (
+            <textarea
+              name={name}
+              value={formData[name] || ""}
+              onChange={handleChange}
+              className={`w-full rounded-lg border ${
+                errors[name] ? 'border-red-500' : 'border-gray-300'
+              } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+              {...options}
+            />
+          ) : (
+            <input
+              type={type}
+              name={name}
+              value={formData[name] || ""}
+              onChange={handleChange}
+              className={`w-full rounded-lg border ${
+                errors[name] ? 'border-red-500' : 'border-gray-300'
+              } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+              {...options}
+            />
+          )}
+        </div>
+        {errors[name] && (
+          <p className="mt-1 text-sm text-red-600">{errors[name]}</p>
+        )}
+      </div>
+    );
+  };
+
+  const renderStep1 = () => (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold text-indigo-800 flex items-center">
+        <School className="mr-2" /> Información básica
+      </h2>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          {renderInput("document_id", "Documento de identidad", <Briefcase size={16} />)}
+          {renderInput("email", "Correo electrónico", <AtSign size={16} />, "email")}
+        </div>
+        <div>
+          {renderInput("name", "Nombre completo", <Building2 size={16} />)}
+          {renderInput("username", "Nombre de usuario", <UserCheck size={16} />)}
+          {renderInput("phone_number", "Teléfono", <Smartphone size={16} />, "tel")}
+        </div>
+      </div>
+    </div>
+  );
+  
+  const renderStep2 = () => (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold text-indigo-800 flex items-center">
+        <Info className="mr-2" /> Información personal
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {renderInput("birth_date", "Fecha de nacimiento", <Calendar size={16} />, "date")}
+        {renderInput("birth_city", "Ciudad de nacimiento", <Map size={16} />)}
+        {renderInput("residence_city", "Ciudad de residencia", <MapPin size={16} />)}
+        {renderInput("address", "Dirección", <Home size={16} />)}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Género
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+              <User size={16} />
+            </div>
+            <select
+              name="gender"
+              value={formData.gender || ""}
+              onChange={handleChange}
+              className={`w-full rounded-lg border ${
+                errors.gender ? 'border-red-500' : 'border-gray-300'
+              } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+            >
+              <option value="">Seleccione...</option>
+              <option value="0">Masculino</option>
+              <option value="1">Femenino</option>
+              <option value="2">Otro</option>
+            </select>
+          </div>
+          {errors.gender && (
+            <p className="mt-1 text-sm text-red-600">{errors.gender}</p>
+          )}
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Nivel académico
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+              <Book size={16} />
+            </div>
+            <select
+              name="academic_level"
+              value={formData.academic_level || ""}
+              onChange={handleChange}
+              className={`w-full rounded-lg border ${
+                errors.academic_level ? 'border-red-500' : 'border-gray-300'
+              } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+            >
+              <option value="">Seleccione...</option>
+              <option value="0">Ninguno</option>
+              <option value="1">Preescolar</option>
+              <option value="2">Primaria</option>
+              <option value="3">Secundaria</option>
+              <option value="4">Bachillerato</option>
+              <option value="5">Técnico</option>
+              <option value="6">Tecnólogo</option>
+              <option value="7">Pregrado</option>
+              <option value="8">Especialización</option>
+              <option value="9">Maestría</option>
+              <option value="10">Doctorado</option>
+            </select>
+          </div>
+          {errors.academic_level && (
+            <p className="mt-1 text-sm text-red-600">{errors.academic_level}</p>
+          )}
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Idioma preferido
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+              <Languages size={16} />
+            </div>
+            <select
+              name="language"
+              value={formData.language || ""}
+              onChange={handleChange}
+              className={`w-full rounded-lg border ${
+                errors.language ? 'border-red-500' : 'border-gray-300'
+              } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+            >
+              <option value="">Seleccione...</option>
+              <option value="1">Español</option>
+              <option value="0">Inglés</option>
+            </select>
+          </div>
+          {errors.language && (
+            <p className="mt-1 text-sm text-red-600">{errors.language}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+  
+  const renderStep3 = () => (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold text-indigo-800 flex items-center">
+        <FileText className="mr-2" /> Perfil y contacto
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {renderInput("photo", "Foto de perfil (URL)", <Image size={16} />, "url", { placeholder: "https://ejemplo.com/foto.jpg" })}
+        {renderInput("webpage", "Página web", <LinkIcon size={16} />, "url", { placeholder: "https://miweb.com" })}
+        {renderInput("whatsapp", "WhatsApp", <Smartphone size={16} />, "tel", { placeholder: "3007654321" })}
+      </div>
+
+      <div className="space-y-4">
+        {renderInput("about", "Acerca de mí", <FileText size={16} />, "textarea", { 
+          rows: 4,
+          placeholder: "Cuéntanos un poco sobre ti...",
+          className: `w-full rounded-lg border ${
+            errors.about ? 'border-red-500' : 'border-gray-300'
+          } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4 min-h-[120px]`
+        })}
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {renderInput("needs", "¿Qué quieres aprender?", <MessageSquare size={16} />, "textarea", { 
+            rows: 3,
+            placeholder: "Describe los temas o habilidades que te gustaría aprender...",
+            className: `w-full rounded-lg border ${
+              errors.needs ? 'border-red-500' : 'border-gray-300'
+            } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4 min-h-[100px]`
+          })}
+          
+          {renderInput("offers", "¿Qué puedes enseñar?", <MessageSquare size={16} />, "textarea", { 
+            rows: 3,
+            placeholder: "Comparte los conocimientos que puedes transmitir a otros...",
+            className: `w-full rounded-lg border ${
+              errors.offers ? 'border-red-500' : 'border-gray-300'
+            } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4 min-h-[100px]`
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  const stepRenderers = [renderStep1, renderStep2, renderStep3];
+
+  useEffect(() => {
+    if (actionData?.duplicateFields) {
+      setErrors(prev => ({
+        ...prev,
+        ...actionData.duplicateFields.reduce((acc, field) => ({
+          ...acc,
+          [field]: "Este campo ya está en uso"
+        }), {})
+      }));
+    }
+  }, [actionData]);
+
+  return (
+    <div 
+      className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center"
+      style={{
+        backgroundImage: `url('/assets/img/fondo_signup.png')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        position: 'relative',
+      }}
+    >
+      <div 
+        className="absolute inset-0"
+        style={{
+          backdropFilter: 'blur(8px)',
+          backgroundColor: 'rgba(79, 70, 229, 0.15)',
+        }}
+      />
+      
+      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full overflow-hidden relative z-10">
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
+          <h1 className="text-3xl font-bold flex items-center">
+            <GraduationCap className="mr-3" size={24} />
+            Editar perfil
+          </h1>
+          <p className="mt-2 opacity-90">Actualiza tu información personal</p>
+          
+          <div className="mt-6 h-2 bg-white bg-opacity-20 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-white transition-all duration-300 ease-in-out" 
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
+          
+          <div className="flex justify-between mt-2 text-xs">
+            <div className={`flex flex-col items-center ${currentStep >= 0 ? 'text-white' : 'text-white text-opacity-60'}`}>
+              <span>Información</span>
+              <span>básica</span>
+            </div>
+            <div className={`flex flex-col items-center ${currentStep >= 1 ? 'text-white' : 'text-white text-opacity-60'}`}>
+              <span>Información</span>
+              <span>personal</span>
+            </div>
+            <div className={`flex flex-col items-center ${currentStep >= 2 ? 'text-white' : 'text-white text-opacity-60'}`}>
+              <span>Perfil y</span>
+              <span>contacto</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6">
+          <div className="min-h-[400px]">
+            {stepRenderers[currentStep]()}
+          </div>
+          
+          {actionData?.error && (
+            <div className="mt-4 bg-red-50 text-red-700 p-4 rounded-lg border border-red-100 flex items-start">
+              <AlertTriangle size={20} className="mr-3 flex-shrink-0" />
+              <div>
+                <p className="font-medium">Error</p>
+                <p>{actionData.error}</p>
+              </div>
+            </div>
+          )}
+
+          {actionData?.success && (
+            <div className="mt-4 bg-green-50 text-green-700 p-4 rounded-lg border border-green-100 flex items-start">
+              <CheckCircle size={20} className="mr-3 flex-shrink-0" />
+              <div>
+                <p className="font-medium">¡Éxito!</p>
+                <p>Tu perfil ha sido actualizado correctamente.</p>
+              </div>
+            </div>
+          )}
+          
+          <div className="mt-8 flex justify-between">
+            <button
+              type="button"
+              onClick={prevStep}
+              disabled={currentStep === 0}
+              className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center 
+                ${currentStep === 0 
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                  : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                }`}
+            >
+              <ChevronLeft size={16} className="mr-2" />
+              Anterior
+            </button>
+            
+            {currentStep < 2 ? (
+              <button
+                type="button"
+                onClick={nextStep}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-all flex items-center"
+              >
+                Siguiente
+                <ChevronRight size={16} className="ml-2" />
+              </button>
+            ) : (
+              <Form method="post">
+                {Object.entries(formData).map(([key, value]) => (
+                  <input key={key} type="hidden" name={key} value={value || ""} />
+                ))}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-all flex items-center"
+                >
+                  Guardar cambios
+                  <CheckCircle size={16} className="ml-2" />
+                </button>
+              </Form>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

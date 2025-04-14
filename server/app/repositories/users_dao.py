@@ -37,3 +37,4 @@ class UsersDAO(Base):
     communities = relationship("UserCommunitiesDAO", back_populates="user_ref")
     transactions = relationship("TransactionsDAO", back_populates="origin_ref")
     enrollments = relationship("CourseEnrollmentsDAO", back_populates="user_ref")
+    code_ref = relationship("SecurityCodeDAO", back_populates="email_ref")

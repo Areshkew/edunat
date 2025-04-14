@@ -1,5 +1,7 @@
 #TODO: Add repositories
+import random
 from app.repositories.users_dao import UsersDAO
+from app.repositories.securitycodes_dao import SecurityCodeDAO
 from app.utils.class_utils import Injectable
 from app.utils.db_data import admin_data
 from app.utils.db_utils import hash_password
@@ -119,6 +121,244 @@ class UserService(Injectable):
             db.add(new_account)
             await db.commit()
             await db.refresh(new_account)
+            return True
+        except IntegrityError:
+            await db.rollback()
+            return None
+        
+
+    async def generate_recovery_code(self) -> str:
+        """
+        Genera un código de recuperación de contraseña aleatorio de 8 caracteres alfanuméricos.
+
+        """
+        # Caracteres alfanuméricos que se utilizarán para generar el código
+        characters = '0123456789'
+        
+        # Genera el código de recuperación aleatorio
+        recovery_code = ''.join(random.choice(characters) for i in range(6))
+        
+        return recovery_code
+    
+
+    async def store_code(self, db: AsyncSession, email: str, code: str):
+        """
+        Crea una nueva instancia o actualiza el código de seguridad para el correo electrónico dado.
+        """
+
+        # Verificar si ya existe un registro para el correo electrónico dado
+        existing_code = await db.execute(select(SecurityCodeDAO).filter(SecurityCodeDAO.user_email == email))
+        existing_code = existing_code.scalars().first()
+
+        if existing_code: #Si existe actualizar
+            existing_code.code = code
+            existing_code.date = datetime.now()
+            await db.commit()
+        else: #Si no existe crear uno nuevo
+            new_code = SecurityCodeDAO(
+                code=code,
+                user_email=email,
+                date=datetime.now()
+            )
+            try:
+                db.add(new_code)
+                await db.commit()
+                return True
+            except IntegrityError:
+                await db.rollback()
+                return False
+            
+
+    async def verify_code(self, db: AsyncSession, email: str, code: str) -> bool:
+        """
+        Compara si el correo tiene el codigo introducido asignado a el
+
+        """
+        stmt = select(SecurityCodeDAO).where( #Busqueda de correo y codigo especificados
+            (SecurityCodeDAO.user_email == email) &
+            (SecurityCodeDAO.code == code)
+        )
+        result = await db.execute(stmt)
+        codigo_seguridad = result.scalars().first()
+        
+        if codigo_seguridad is None:
+            return False
+
+        current_datetime = datetime.now()
+        time_difference = current_datetime - codigo_seguridad.date
+
+        if time_difference.total_seconds() < 600:  # 10 minutos en segundos
+            return True
+        else:
+            return False
+
+    
+    async def update_password(self, db: AsyncSession, gmail: str, password: str) -> bool:
+        """
+        Actualiza la contraseña de algun email de un usuario
+
+        """
+        hashed_password = hash_password(password)
+
+        # Buscar al usuario por su correo electrónico en la base de datos
+        user = await db.execute(select(UsersDAO).filter(UsersDAO.email == gmail))
+        user = user.scalars().first()
+        if not user:
+            return False
+
+        # Actualizar la contraseña del usuario en la base de datos
+        user.password = hashed_password
+        await db.commit()
+        return True
+    
+    async def get_user_data(self, db: AsyncSession, dni: str, user_fields: List[str]):
+        """
+        Obtiene los datos del usuario según el DNI y los campos especificados.
+        """
+        # Lista de campos a excluir 
+        exclude_fields = ["password"]
+
+        selected_columns = [getattr(UsersDAO, field) for field in user_fields if field not in exclude_fields]
+
+        # Realizar la consulta en la base de datos
+        user_query = select(*selected_columns).filter(UsersDAO.document_id == dni)
+        user_results = await db.execute(user_query)
+        user_row = user_results.fetchone()
+
+        # Crear un diccionario con los resultados
+        user_data = dict(zip(user_fields, user_row))
+            
+        return user_data
+
+    async def get_users(self, db: AsyncSession):
+        """
+        Obtiene todos los usuarios de la base de datos con campos específicos.
+        """
+        stmt = select(
+            UsersDAO.email,
+            UsersDAO.username,
+            UsersDAO.visibility,
+            UsersDAO.role,
+            UsersDAO.name,
+            UsersDAO.points,
+            UsersDAO.phone_number,
+            UsersDAO.academic_level,
+            UsersDAO.document_id
+        ).order_by(UsersDAO.created_at.desc())
+        result = await db.execute(stmt)
+        users = result.all()
+        
+        return [
+            {
+                "email": user[0],
+                "username": user[1],
+                "visibility": user[2],
+                "role": user[3],
+                "name": user[4],
+                "points": user[5],
+                "phone_number": user[6],
+                "academic_level": user[7],
+                "document_id": user[8]
+            }
+            for user in users
+        ]
+    
+    async def get_user(self, db: AsyncSession, document_id: str):
+        """
+        Obtiene todos los datos de un usuario de la base de datos por su document_id.
+        """
+        stmt = select(UsersDAO).where(UsersDAO.document_id == document_id)
+        
+        result = await db.execute(stmt)
+        user = result.scalars().first()
+        
+        if user:
+            return {
+                "document_id": user.document_id,
+                "email": user.email,
+                "username": user.username,
+                "role": user.role,
+                "name": user.name,
+                "academic_level": user.academic_level,
+                "phone_number": user.phone_number,
+                "gender": user.gender,
+                "photo": user.photo,
+                "visibility": user.visibility,
+                "needs": user.needs,
+                "offers": user.offers,
+                "webpage": user.webpage,
+                "whatsapp": user.whatsapp,
+                "birth_date": user.birth_date,
+                "birth_city": user.birth_city,
+                "language": user.language,
+                "residence_city": user.residence_city,
+                "address": user.address,
+                "about": user.about,
+                "points": user.points,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at
+            }
+        return None
+
+
+    async def toggle_visibility(self, db: AsyncSession, document_id: str) -> bool:
+        """
+        Cambia la visibilidad de un usuario.
+        """
+        user = await db.execute(select(UsersDAO).filter(UsersDAO.document_id == document_id))
+        user = user.scalars().first()
+        if not user:
+            return False
+
+        user.visibility = not user.visibility
+        await db.commit()
+        return True
+
+    async def toggle_role(self, db: AsyncSession, document_id: str) -> bool:
+        """
+        Cambia el rol de un usuario.
+        """
+        user = await db.execute(select(UsersDAO).filter(UsersDAO.document_id == document_id))
+        user = user.scalars().first()
+        if not user:
+            return False
+
+        user.role = 0 if user.role == 1 else 1
+        await db.commit()
+        return True
+
+    async def delete_user(self, db: AsyncSession, document_id: str) -> bool:
+        """
+        Elimina un usuario de la base de datos.
+        """
+        user = await db.execute(select(UsersDAO).filter(UsersDAO.document_id == document_id))
+        user = user.scalars().first()
+        if not user:
+            return False
+
+        await db.execute(delete(UsersDAO).where(UsersDAO.document_id == document_id))
+        await db.commit()
+        return True
+    
+    async def update_account(self, db: AsyncSession, account_data: dict, dni: str = ""):
+        """
+            Actualiza una cuenta de usuario en la base de datos.
+        """
+        
+        result = await db.execute(select(UsersDAO).filter(UsersDAO.document_id == dni))
+        user = result.scalar()
+
+        if "birth_date" in account_data:
+            account_data["birth_date"] = datetime.strptime(account_data["birth_date"], "%Y-%m-%d").date()
+
+        if "password" in account_data:
+            account_data["password"] = hash_password(account_data["password"])
+          
+        try:    
+            for key, value in account_data.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
+            await db.commit()
             return True
         except IntegrityError:
             await db.rollback()

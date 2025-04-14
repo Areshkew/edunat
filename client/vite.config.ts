@@ -1,6 +1,7 @@
 import { vitePlugin as remix } from "@remix-run/dev";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+import { flatRoutes } from "remix-flat-routes"; // Importamos flatRoutes
 
 declare module "@remix-run/node" {
   interface Future {
@@ -17,6 +18,9 @@ export default defineConfig({
         v3_throwAbortReason: true,
         v3_singleFetch: true,
         v3_lazyRouteDiscovery: true,
+      },
+      routes: async (defineRoutes) => {
+        return flatRoutes("routes", defineRoutes); // Configuramos flatRoutes para el directorio de rutas
       },
     }),
     tsconfigPaths(),
