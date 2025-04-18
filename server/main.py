@@ -1,10 +1,20 @@
+# Description: Archivo principal del servidor. Se encarga de inicializar el servidor y de definir las rutas de la API.
 from fastapi.staticfiles import StaticFiles
+
 #TODO: Add app controllers
 from app.controllers.user_controller import UserController
+
+#Middleware
 from app.middleware.auth_middleware import AuthMiddleware
+
+#Services
 from app.services.user_service import UserService
+
+#Utils
 from app.utils.class_utils import inject
 from app.utils.db_utils import create_tables, get_db_session
+
+#Libraries
 from contextlib import asynccontextmanager
 from db.connection import engine
 from fastapi import FastAPI
@@ -40,7 +50,6 @@ class ServerBootstrap:
         async for session in get_db_session():
             try:
                 await UserService.initialize_db(session)
-                pass
             finally:
                 await session.close()
 
