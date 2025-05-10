@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
-import { Users, ChevronLeft, ChevronRight, BarChart2, BookOpen, Settings, HelpCircle } from "lucide-react";
+import { Users, ChevronLeft, ChevronRight, BarChart2, BookOpen, Settings, HelpCircle, Boxes } from "lucide-react";
 import { Form, useLocation } from "@remix-run/react";
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ mobileOpen, setMobileOpen }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 0);
   const location = useLocation();
 
-  // Auto-collapse on small screens
+  // Auto-collapse on small screens only for initial state
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
       if (window.innerWidth < 768) {
-        setCollapsed(true);
+        // En móvil, el sidebar inicialmente está colapsado, pero luego se muestra completo
+        setCollapsed(false); // Asegura que al abrir el sidebar en móvil, se muestre completo
       }
     };
 
@@ -25,33 +25,52 @@ export default function AdminDashboard() {
   }, []);
 
   const menuItems = [
-    { icon: <BarChart2 size={18} />, label: "Dashboard", path: "/dashboard/admin" },
-    { icon: <Users size={18} />, label: "Usuarios", path: "/dashboard/admin/users" },
-    { icon: <BookOpen size={18} />, label: "Cursos", path: "/dashboard/admin/courses" },
-    { icon: <Settings size={18} />, label: "Configuración", path: "/dashboard/admin/settings" },
-    { icon: <HelpCircle size={18} />, label: "Ayuda", path: "/dashboard/admin/help" },
+    { icon: <BarChart2 size={18} />, label: "Dashboard", path: "/dashboard" },
+    { icon: <Users size={18} />, label: "Usuarios", path: "/dashboard/users" },
+    { icon: <Boxes size={18} />, label: "Comunidades", path: "/dashboard/communities" },
+    { icon: <BookOpen size={18} />, label: "Cursos", path: "/dashboard/courses" },
+    { icon: <Settings size={18} />, label: "Configuración", path: "/dashboard/settings" },
+    { icon: <HelpCircle size={18} />, label: "Ayuda", path: "/dashboard/help" },
   ];
 
   const isActive = (path) => {
-    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+    // Special case for dashboard main path
+    if (path === "/dashboard") {
+      return location.pathname === "/dashboard" || location.pathname === "/dashboard/";
+    }
+    // For other paths, check if the current path starts with the menu item path
+    return location.pathname.startsWith(`${path}/`) || location.pathname === path;
   };
 
-  const toggleMobileMenu = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
-  return (
-    <>
-      {/* Mobile menu button - visible on small screens */}
-      {windowWidth < 768 && (
+  // Mobile menu button is now managed by parent component
+  // We need to add it here as a mobile indicator for small screens
+  const MobileMenuButton = () => {
+    if (windowWidth < 768) {
+      return (
         <button
-          onClick={toggleMobileMenu}
+          onClick={() => setMobileOpen(!mobileOpen)}
           className="fixed top-4 left-4 z-50 bg-indigo-600 text-white p-2 rounded-lg shadow-lg md:hidden"
+          aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
         >
           {mobileOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
         </button>
-      )}
+      );
+    }
+    return null;
+  };
+  
+  // En móvil, cuando se abre el sidebar, asegurarse que no esté colapsado
+  useEffect(() => {
+    if (windowWidth < 768 && mobileOpen) {
+      setCollapsed(false); // Muestra versión completa en móvil cuando está abierto
+    }
+  }, [mobileOpen, windowWidth]);
 
+  return (
+    <>
+      {/* Mobile menu button - highest z-index */}
+      <MobileMenuButton />
+      
       {/* Mobile Overlay */}
       {mobileOpen && windowWidth < 768 && (
         <div 
@@ -60,10 +79,10 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - very high z-index to ensure it's above all content */}
       <div 
-        className={`h-screen bg-gradient-to-b from-indigo-700 to-indigo-900 text-white shadow-lg transition-all duration-200 ease-in-out
-                  ${collapsed && !mobileOpen ? 'w-14' : 'w-48'}
+        className={`h-screen bg-gradient-to-b from-indigo-700 to-indigo-900 text-white shadow-lg transition-all duration-200 ease-in-out fixed md:sticky top-0 z-40
+                  ${(collapsed && !(windowWidth < 768 && mobileOpen)) ? 'w-14' : 'w-48'}
                   ${windowWidth < 768 && !mobileOpen ? '-translate-x-full' : 'translate-x-0'}`}
       >
         <div className="flex flex-col h-full">

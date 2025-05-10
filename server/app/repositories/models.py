@@ -34,7 +34,6 @@ CommunitiesDAO.members = relationship("UserCommunitiesDAO", back_populates="comm
 
 # Relaciones para TransactionsDAO
 TransactionsDAO.origin_ref = relationship("UsersDAO", foreign_keys=[TransactionsDAO.origin], back_populates="transactions")
-TransactionsDAO.destination_ref = relationship("UsersDAO", foreign_keys=[TransactionsDAO.destination])
 
 # Relaciones para CoursesDAO
 CoursesDAO.enrollments = relationship("CourseEnrollmentsDAO", back_populates="course_ref")

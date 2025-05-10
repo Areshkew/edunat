@@ -9,7 +9,7 @@ from app.services.user_service import UserService
 from app.services.email_service import EmailService
 
 #Db utils
-from app.utils.auth import create_token
+from app.utils.auth import create_token, verify_token
 from app.utils.class_utils import Injectable, inject
 from app.utils.db_utils import get_db_session, verify_password
 
@@ -23,16 +23,20 @@ class UserController(Injectable):
         # Recuperación de contraseña
         self.route.add_api_route("/passwordrecover", self.passwordrecover, methods=["POST"])
         self.route.add_api_route("/codeverification", self.codeverification, methods=["POST"])
-        self.route.add_api_route("/newpassword", self.newpassword, methods=["POST"])
-        #Funciones para usuario
+        self.route.add_api_route("/newpasswordm", self.newpasswordwithemail, methods=["POST"])
+        #Funciones de usuario
         self.route.add_api_route("/userdata", self.getuserdata, methods=["POST"])
         self.route.add_api_route("/users", self.getusers, methods=["GET"])
         self.route.add_api_route("/{document_id}", self.getuser, methods=["GET"])
         self.route.add_api_route("/editaccount", self.editaccount, methods=["POST"])
-        #Funciones para admin
         self.route.add_api_route("/togglev/{document_id}", self.togglev, methods=["POST"])
         self.route.add_api_route("/toggler/{document_id}", self.toggler, methods=["POST"])
         self.route.add_api_route("/delete/{document_id}", self.delete, methods=["POST"])
+        self.route.add_api_route("/newpassword", self.newpassword, methods=["POST"])
+        #Funcions de transferencia
+        self.route.add_api_route("/addp/{document_id}/{points}", self.addp, methods=["POST"])
+        # Nuevo endpoint para renovar el token
+        self.route.add_api_route("/refresh-token", self.refresh_token, methods=["POST"])
 
 
     # Ingreso de usuario
@@ -103,19 +107,30 @@ class UserController(Injectable):
                             detail="El codigo es invalido")
             
 
-    async def newpassword(self, user: UserNewPassword, db: Session = Depends(get_db_session)):
+    async def newpasswordwithemail(self, user: UserNewPassword, db: Session = Depends(get_db_session)):
         data = user.model_dump()
 
         if data["password"] != data["repeated_password"]:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Las contraseñas ingresadas no coinciden.")
 
-        success = await self.userservice.update_password(db, data["email"], data["password"])
+        success = await self.userservice.update_passwordm(db, data["email"], data["password"])
+
+        if success:
+            return {"detail": "La contraseña se cambio con exito.", "Success": True}
+    
+    async def newpassword(self, user: UserNewPassword, request: Request, db: Session = Depends(get_db_session)):
+        data = user.model_dump()
+
+        if data["password"] != data["repeated_password"]:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Las contraseñas ingresadas no coinciden.")
+
+        success = await self.userservice.update_password(db, request.state.payload["sub"], data["password"])
 
         if success:
             return {"detail": "La contraseña se cambio con exito.", "Success": True}
         
-
     #Funciones para get usuario
     async def getuserdata(self, user_fields: List[str], request: Request, db: Session = Depends(get_db_session)):
         data = request.state.payload["sub"]
@@ -211,3 +226,40 @@ class UserController(Injectable):
 
         await self.userservice.update_account(db, data, dni)
         return {"detail": "Se actualizo la cuenta correctamente.", "success": True}
+    
+    #Funciones de transferencia
+    async def addp(self, document_id: str, points: int, request: Request, db: Session = Depends(get_db_session)):
+        try:
+            document_id = int(document_id)  # Convert to integer
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El ID del documento debe ser un número.")
+
+        if request.state.payload["role"] != 1:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para realizar esta acción.")
+        
+        success = await self.userservice.add_points(db, document_id, points)
+        if success:
+            return {"detail": "Los puntos se agregaron con exito"}
+        
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+    
+    async def refresh_token(self, request: Request):
+        """
+        Endpoint para renovar el token JWT.
+        Requiere un token válido en el encabezado Authorization.
+        """
+        # Verificamos que exista un payload (el middleware ya validó el token)
+        if not hasattr(request.state, 'payload'):
+            raise HTTPException(status_code=401, detail="Token no válido")
+            
+        # Extraer la información del payload actual
+        current_payload = request.state.payload
+        
+        # Crear un nuevo token con la misma información pero nueva fecha de expiración
+        new_token = create_token(current_payload)
+        
+        # Responder con el nuevo token
+        return {
+            "token": new_token,
+            "expiresIn": 60 * 60  # 1 hora en segundos (basado en ACCESS_TOKEN_EXPIRE_MINUTES = 60)
+        }

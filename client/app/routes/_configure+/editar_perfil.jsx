@@ -1,4 +1,4 @@
-import { Form, useActionData, useLoaderData } from "@remix-run/react";
+import { Form, useActionData, useLoaderData, Link } from "@remix-run/react";
 import { json, redirect } from "@remix-run/node";
 import { useState, useEffect } from "react";
 import { 
@@ -59,6 +59,23 @@ const validateStep1 = (data) => {
 const validateStep2 = (data) => {
   const errors = {};
   
+  // Validación de fecha de nacimiento
+  if (!data.birth_date) {
+    errors.birth_date = "La fecha de nacimiento es requerida";
+  } else {
+    const birthDate = new Date(data.birth_date);
+    const today = new Date();
+    const minDate = new Date(today.getFullYear() - 80, today.getMonth(), today.getDate());
+    // Solo validamos si el string es válido para evitar NaN
+    if (!isNaN(birthDate.getTime())) {
+      if (birthDate > today) {
+        errors.birth_date = "La fecha no puede ser en el futuro";
+      } else if (birthDate < minDate) {
+        errors.birth_date = "La edad máxima permitida es 80 años";
+      }
+    }
+  }
+  
   if (data.birth_city && data.birth_city.length > 64) {
     errors.birth_city = "Máximo 64 caracteres";
   }
@@ -69,6 +86,21 @@ const validateStep2 = (data) => {
   
   if (data.address && data.address.length > 128) {
     errors.address = "Máximo 128 caracteres";
+  }
+
+  // Validación de género
+  if (data.gender === undefined || data.gender === null || data.gender === "") {
+    errors.gender = "El género es requerido";
+  }
+
+  // Validación de nivel académico
+  if (data.academic_level === undefined || data.academic_level === null || data.academic_level === "") {
+    errors.academic_level = "El nivel académico es requerido";
+  }
+
+  // Validación de idioma
+  if (data.language === undefined || data.language === null || data.language === "") {
+    errors.language = "El idioma es requerido";
   }
 
   return errors;
@@ -204,6 +236,12 @@ export default function EditarPerfil() {
 
   const progressPercentage = ((currentStep + 1) / 3) * 100;
 
+  // Calcular límites para el input de fecha
+  const today = new Date();
+  const maxDate = today.toISOString().split("T")[0];
+  const minDateObj = new Date(today.getFullYear() - 80, today.getMonth(), today.getDate());
+  const minDate = minDateObj.toISOString().split("T")[0];
+
   const renderInput = (name, label, icon, type = "text", options = {}) => {
     const isTextarea = type === "textarea";
     return (
@@ -246,105 +284,146 @@ export default function EditarPerfil() {
   };
 
   const renderStep1 = () => (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-indigo-800 flex items-center">
-        <School className="mr-2" /> Información básica
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold text-indigo-800 flex items-center mb-3">
+        <School className="mr-2" size={16} /> Información básica
       </h2>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
         <div>
-          {renderInput("document_id", "Documento de identidad", <Briefcase size={16} />)}
-          {renderInput("email", "Correo electrónico", <AtSign size={16} />, "email")}
+          {renderInput("document_id", "Documento de identidad", <Briefcase size={14} />)}
+          {renderInput("email", "Correo electrónico", <AtSign size={14} />, "email")}
         </div>
         <div>
-          {renderInput("name", "Nombre completo", <Building2 size={16} />)}
-          {renderInput("username", "Nombre de usuario", <UserCheck size={16} />)}
-          {renderInput("phone_number", "Teléfono", <Smartphone size={16} />, "tel")}
+          {renderInput("name", "Nombre completo", <Building2 size={14} />)}
+          {renderInput("username", "Nombre de usuario", <UserCheck size={14} />)}
+          {renderInput("phone_number", "Teléfono", <Smartphone size={14} />, "tel")}
+        </div>
+      </div>
+      <div className="bg-blue-50 p-4 rounded-md border border-blue-100 mt-2 flex items-start">
+        <div className="text-blue-500 mr-2 flex-shrink-0 pt-0.5">
+          <AlertTriangle size={12} />
+        </div>
+        <div className="text-sm text-blue-700">
+          <p className="font-medium">Información importante</p>
+          <p>Estos datos son fundamentales para identificarte en nuestra plataforma.</p>
         </div>
       </div>
     </div>
   );
   
   const renderStep2 = () => (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-indigo-800 flex items-center">
-        <Info className="mr-2" /> Información personal
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold text-indigo-800 flex items-center mb-3">
+        <Info className="mr-2" size={16} /> Información personal
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {renderInput("birth_date", "Fecha de nacimiento", <Calendar size={16} />, "date")}
-        {renderInput("birth_city", "Ciudad de nacimiento", <Map size={16} />)}
-        {renderInput("residence_city", "Ciudad de residencia", <MapPin size={16} />)}
-        {renderInput("address", "Dirección", <Home size={16} />)}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Género
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-              <User size={16} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-3">
+          {/* Fecha de nacimiento con min y max */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Fecha de nacimiento
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                <Calendar size={14} />
+              </div>
+              <input
+                type="date"
+                name="birth_date"
+                value={formData.birth_date || ""}
+                onChange={handleChange}
+                min={minDate}
+                max={maxDate}
+                className={`w-full rounded-lg border ${
+                  errors.birth_date ? 'border-red-500' : 'border-gray-300'
+                } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+              />
             </div>
-            <select
-              name="gender"
-              value={formData.gender || ""}
-              onChange={handleChange}
-              className={`w-full rounded-lg border ${
-                errors.gender ? 'border-red-500' : 'border-gray-300'
-              } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
-            >
-              <option value="">Seleccione...</option>
-              <option value="0">Masculino</option>
-              <option value="1">Femenino</option>
-              <option value="2">Otro</option>
-            </select>
+            {errors.birth_date && (
+              <p className="mt-1 text-sm text-red-600">{errors.birth_date}</p>
+            )}
           </div>
-          {errors.gender && (
-            <p className="mt-1 text-sm text-red-600">{errors.gender}</p>
-          )}
+          {renderInput("birth_city", "Ciudad de nacimiento", <Map size={14} />)}
+          {renderInput("residence_city", "Ciudad de residencia", <MapPin size={14} />)}
         </div>
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Nivel académico
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-              <Book size={16} />
+        <div className="space-y-3">
+          {renderInput("address", "Dirección", <Home size={14} />)}
+          {/* Género */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Género
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                <User size={14} />
+              </div>
+              <select
+                name="gender"
+                value={formData.gender ?? ""}
+                onChange={handleChange}
+                className={`w-full rounded-lg border ${
+                  errors.gender ? 'border-red-500' : 'border-gray-300'
+                } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+              >
+                <option value="">Seleccione...</option>
+                <option value="0">Masculino</option>
+                <option value="1">Femenino</option>
+                <option value="2">Otro</option>
+              </select>
             </div>
-            <select
-              name="academic_level"
-              value={formData.academic_level || ""}
-              onChange={handleChange}
-              className={`w-full rounded-lg border ${
-                errors.academic_level ? 'border-red-500' : 'border-gray-300'
-              } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
-            >
-              <option value="">Seleccione...</option>
-              <option value="0">Ninguno</option>
-              <option value="1">Preescolar</option>
-              <option value="2">Primaria</option>
-              <option value="3">Secundaria</option>
-              <option value="4">Bachillerato</option>
-              <option value="5">Técnico</option>
-              <option value="6">Tecnólogo</option>
-              <option value="7">Pregrado</option>
-              <option value="8">Especialización</option>
-              <option value="9">Maestría</option>
-              <option value="10">Doctorado</option>
-            </select>
+            {errors.gender && (
+              <p className="mt-1 text-sm text-red-600">{errors.gender}</p>
+            )}
           </div>
-          {errors.academic_level && (
-            <p className="mt-1 text-sm text-red-600">{errors.academic_level}</p>
-          )}
+          {/* Nivel académico */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nivel académico
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                <Book size={14} />
+              </div>
+              <select
+                name="academic_level"
+                value={formData.academic_level ?? ""}
+                onChange={handleChange}
+                className={`w-full rounded-lg border ${
+                  errors.academic_level ? 'border-red-500' : 'border-gray-300'
+                } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4`}
+              >
+                <option value="">Seleccione...</option>
+                <option value="0">Ninguno</option>
+                <option value="1">Preescolar</option>
+                <option value="2">Primaria</option>
+                <option value="3">Secundaria</option>
+                <option value="4">Bachillerato</option>
+                <option value="5">Técnico</option>
+                <option value="6">Tecnólogo</option>
+                <option value="7">Pregrado</option>
+                <option value="8">Especialización</option>
+                <option value="9">Maestría</option>
+                <option value="10">Doctorado</option>
+              </select>
+            </div>
+            {errors.academic_level && (
+              <p className="mt-1 text-sm text-red-600">{errors.academic_level}</p>
+            )}
+          </div>
         </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Idioma preferido
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-              <Languages size={16} />
+              <Languages size={14} />
             </div>
             <select
               name="language"
-              value={formData.language || ""}
+              value={formData.language ?? ""}
               onChange={handleChange}
               className={`w-full rounded-lg border ${
                 errors.language ? 'border-red-500' : 'border-gray-300'
@@ -364,41 +443,64 @@ export default function EditarPerfil() {
   );
   
   const renderStep3 = () => (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-indigo-800 flex items-center">
-        <FileText className="mr-2" /> Perfil y contacto
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold text-indigo-800 flex items-center mb-3">
+        <FileText className="mr-2" size={16} /> Perfil y contacto
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {renderInput("photo", "Foto de perfil (URL)", <Image size={16} />, "url", { placeholder: "https://ejemplo.com/foto.jpg" })}
-        {renderInput("webpage", "Página web", <LinkIcon size={16} />, "url", { placeholder: "https://miweb.com" })}
-        {renderInput("whatsapp", "WhatsApp", <Smartphone size={16} />, "tel", { placeholder: "3007654321" })}
+      
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 text-sm">
+        <div className="md:col-span-5">
+          {renderInput("photo", "Foto (URL)", <Image size={14} />, "url", { 
+            placeholder: "https://ejemplo.com/foto.jpg"
+          })}
+        </div>
+        <div className="md:col-span-4">
+          {renderInput("webpage", "Web", <LinkIcon size={14} />, "url", { 
+            placeholder: "https://miweb.com" 
+          })}
+        </div>
+        <div className="md:col-span-3">
+          {renderInput("whatsapp", "WhatsApp", <Smartphone size={14} />, "tel", { 
+            placeholder: "3007654321" 
+          })}
+        </div>
       </div>
-
-      <div className="space-y-4">
-        {renderInput("about", "Acerca de mí", <FileText size={16} />, "textarea", { 
-          rows: 4,
-          placeholder: "Cuéntanos un poco sobre ti...",
-          className: `w-full rounded-lg border ${
+      
+      <div className="space-y-3">
+        {renderInput("about", "Acerca de mí", <FileText size={14} />, "textarea", { 
+          rows: 3,
+          placeholder: "Cuéntanos sobre ti...",
+          className: `w-full rounded-md border ${
             errors.about ? 'border-red-500' : 'border-gray-300'
-          } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4 min-h-[120px]`
+          } focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition pl-8 py-1.5 pr-3 min-h-[60px] text-sm`
         })}
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {renderInput("needs", "¿Qué quieres aprender?", <MessageSquare size={16} />, "textarea", { 
-            rows: 3,
-            placeholder: "Describe los temas o habilidades que te gustaría aprender...",
-            className: `w-full rounded-lg border ${
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {renderInput("needs", "¿Qué quieres aprender?", <MessageSquare size={14} />, "textarea", { 
+            rows: 2,
+            placeholder: "Temas que te interesan...",
+            className: `w-full rounded-md border ${
               errors.needs ? 'border-red-500' : 'border-gray-300'
-            } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4 min-h-[100px]`
+            } focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition pl-8 py-1.5 pr-3 min-h-[50px] text-sm`
           })}
           
-          {renderInput("offers", "¿Qué puedes enseñar?", <MessageSquare size={16} />, "textarea", { 
-            rows: 3,
-            placeholder: "Comparte los conocimientos que puedes transmitir a otros...",
-            className: `w-full rounded-lg border ${
+          {renderInput("offers", "¿Qué puedes enseñar?", <MessageSquare size={14} />, "textarea", { 
+            rows: 2,
+            placeholder: "Conocimientos para compartir...",
+            className: `w-full rounded-md border ${
               errors.offers ? 'border-red-500' : 'border-gray-300'
-            } focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition pl-10 py-2 pr-4 min-h-[100px]`
+            } focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition pl-8 py-1.5 pr-3 min-h-[50px] text-sm`
           })}
+        </div>
+      </div>
+      
+      <div className="bg-green-50 p-2 rounded-md border border-green-100 mt-2 flex items-start">
+        <div className="text-green-500 mr-2 flex-shrink-0">
+          <CheckCircle size={12} />
+        </div>
+        <div className="text-xs text-green-700">
+          <p className="font-medium">Un perfil completo aumenta tus posibilidades</p>
+          <p>Los usuarios con perfiles detallados reciben hasta 5 veces más interacciones.</p>
         </div>
       </div>
     </div>
@@ -420,7 +522,7 @@ export default function EditarPerfil() {
 
   return (
     <div 
-      className="min-h-screen py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center"
+      className="min-h-screen py-4 px-2 sm:px-6 lg:px-8 flex items-center justify-center"
       style={{
         backgroundImage: `url('/assets/img/fondo_signup.png')`,
         backgroundSize: 'cover',
@@ -436,22 +538,38 @@ export default function EditarPerfil() {
         }}
       />
       
-      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full overflow-hidden relative z-10">
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white">
-          <h1 className="text-3xl font-bold flex items-center">
-            <GraduationCap className="mr-3" size={24} />
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg sm:max-w-2xl mx-auto overflow-hidden relative z-5">
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 sm:p-6 text-white">
+        {/* Fila superior con botón de volver alineado a la izquierda */}
+        <div className="flex justify-between items-start mb-3">
+          <Link 
+            to="/configurar" 
+            className="flex items-center text-sm hover:text-white/80 transition"
+          >
+            <ChevronLeft size={18} className="mr-1" />
+            <span>Volver</span>
+          </Link>
+        </div>
+
+        {/* Título centrado */}
+        <div className="text-center">
+          <h1 className="text-lg sm:text-xl font-bold flex items-center justify-center">
+            <GraduationCap className="mr-2" size={20} />
             Editar perfil
           </h1>
-          <p className="mt-2 opacity-90">Actualiza tu información personal</p>
-          
-          <div className="mt-6 h-2 bg-white bg-opacity-20 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-white transition-all duration-300 ease-in-out" 
-              style={{ width: `${progressPercentage}%` }}
-            />
-          </div>
-          
-          <div className="flex justify-between mt-2 text-xs">
+          <p className="mt-1 text-xs sm:text-sm opacity-90">Actualiza tu información personal</p>
+        </div>
+
+        {/* Barra de progreso (se mantiene igual) */}
+        <div className="mt-4 h-1.5 bg-white bg-opacity-20 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-white transition-all duration-300 ease-in-out" 
+            style={{ width: `${progressPercentage}%` }}
+          />
+        </div>
+        
+        {/* Indicadores de pasos */}
+        <div className="flex justify-between mt-2 text-[10px] sm:text-xs max-w-md mx-auto">
             <div className={`flex flex-col items-center ${currentStep >= 0 ? 'text-white' : 'text-white text-opacity-60'}`}>
               <span>Información</span>
               <span>básica</span>
@@ -467,8 +585,8 @@ export default function EditarPerfil() {
           </div>
         </div>
         
-        <div className="p-6">
-          <div className="min-h-[400px]">
+        <div className="p-3 sm:p-5">
+          <div className="min-h-[350px]">
             {stepRenderers[currentStep]()}
           </div>
           
@@ -492,12 +610,12 @@ export default function EditarPerfil() {
             </div>
           )}
           
-          <div className="mt-8 flex justify-between">
+          <div className="mt-6 flex flex-col sm:flex-row justify-between gap-2">
             <button
               type="button"
               onClick={prevStep}
               disabled={currentStep === 0}
-              className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center 
+              className={`w-full sm:w-auto px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center
                 ${currentStep === 0 
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                   : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
@@ -511,20 +629,20 @@ export default function EditarPerfil() {
               <button
                 type="button"
                 onClick={nextStep}
-                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-all flex items-center"
+                className="w-full sm:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center"
               >
                 Siguiente
                 <ChevronRight size={16} className="ml-2" />
               </button>
             ) : (
-              <Form method="post">
+              <Form method="post" className="w-full sm:w-auto">
                 {Object.entries(formData).map(([key, value]) => (
                   <input key={key} type="hidden" name={key} value={value || ""} />
                 ))}
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-all flex items-center"
+                  className="w-full sm:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center"
                 >
                   Guardar cambios
                   <CheckCircle size={16} className="ml-2" />

@@ -1,10 +1,4 @@
-#TODO: Add repositories
 import random
-from app.repositories.users_dao import UsersDAO
-from app.repositories.securitycodes_dao import SecurityCodeDAO
-from app.utils.class_utils import Injectable
-from app.utils.db_data import admin_data
-from app.utils.db_utils import hash_password
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, delete, func, update
 from sqlalchemy.sql import join
@@ -13,6 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from datetime import date
 import logging
+
+from app.repositories.users_dao import UsersDAO
+from app.repositories.securitycodes_dao import SecurityCodeDAO
+from app.utils.class_utils import Injectable
+from app.utils.db_data import admin_data
+from app.utils.db_utils import hash_password
 
 
 class UserService(Injectable):
@@ -193,7 +193,7 @@ class UserService(Injectable):
             return False
 
     
-    async def update_password(self, db: AsyncSession, gmail: str, password: str) -> bool:
+    async def update_passwordm(self, db: AsyncSession, gmail: str, password: str) -> bool:
         """
         Actualiza la contraseña de algun email de un usuario
 
@@ -202,6 +202,24 @@ class UserService(Injectable):
 
         # Buscar al usuario por su correo electrónico en la base de datos
         user = await db.execute(select(UsersDAO).filter(UsersDAO.email == gmail))
+        user = user.scalars().first()
+        if not user:
+            return False
+
+        # Actualizar la contraseña del usuario en la base de datos
+        user.password = hashed_password
+        await db.commit()
+        return True
+    
+    async def update_password(self, db: AsyncSession, document_id: str, password: str) -> bool:
+        """
+        Actualiza la contraseña de algun id de un usuario
+
+        """
+        hashed_password = hash_password(password)
+
+        # Buscar al usuario por su correo electrónico en la base de datos
+        user = await db.execute(select(UsersDAO).filter(UsersDAO.document_id == document_id))
         user = user.scalars().first()
         if not user:
             return False
@@ -363,3 +381,17 @@ class UserService(Injectable):
         except IntegrityError:
             await db.rollback()
             return None
+        
+    async def add_points(self, db: AsyncSession, document_id: str, points: int) -> bool:
+        """
+        Agrega puntos a un usuario
+        """
+        user = await db.execute(select(UsersDAO).filter(UsersDAO.document_id == document_id))
+        user = user.scalars().first()
+        if not user:
+            return False
+
+        user.points = (user.points or 0) + points
+        await db.commit()
+        return True
+        

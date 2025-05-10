@@ -57,7 +57,6 @@ export async function action({ request }) {
 
       if (!toggleResponse.ok) throw new Error('Toggle action failed');
       
-      // Después de cambiar el rol, obtener los datos actualizados del usuario
       const userResponse = await fetch(`http://localhost:8000/api/user/${userId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -66,7 +65,6 @@ export async function action({ request }) {
       
       const userData = await userResponse.json();
       
-      // También obtener la lista actualizada de usuarios
       const usersResponse = await fetch('http://localhost:8000/api/user/users', {
         headers: {
           'Authorization': `Bearer ${token}`,

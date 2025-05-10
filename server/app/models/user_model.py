@@ -37,7 +37,7 @@ class UserCode(BaseModel):
     code: Annotated[str, Field(..., length=8)]
 
 class UserNewPassword(BaseModel):
-    email: Annotated[EmailStr, Field(...)]
+    email: Optional[EmailStr] = Field(default=None)
     password: Annotated[str, Field(..., min_length=5, max_length=32)]
     repeated_password: Annotated[str, Field(..., min_length=5, max_length=32)]
 
