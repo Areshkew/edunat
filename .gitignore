@@ -4,3 +4,4 @@ sources.md
 **/__pycache__/
 /server/keys
 /server/tests
+/uploads

@@ -65,6 +65,24 @@ export async function action({ request }) {
       
       const userData = await userResponse.json();
       
+      // Create notification based on new role
+      const notificationMessage = userData.role === 1 
+        ? "Ahora eres administrador del sistema" 
+        : "Ya no eres administrador del sistema";
+        
+      await fetch('http://localhost:8000/api/notifications/create', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: parseInt(userId),
+          message: notificationMessage,
+          notification_type: 2 // Alert type
+        })
+      });
+      
       const usersResponse = await fetch('http://localhost:8000/api/user/users', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -97,3 +115,5 @@ export default function DashboardUsers() {
   const { users, token } = useLoaderData();
   return <ManageUsers initialUsers={users} token={token} />;
 }
+
+

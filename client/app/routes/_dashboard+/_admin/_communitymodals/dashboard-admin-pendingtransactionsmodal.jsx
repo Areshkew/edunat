@@ -65,7 +65,7 @@ export default function PendingTransactionsModal({
   };
 
   // Handle transaction approval
-  const handleApprove = (transactionId) => {
+  const handleApprove = (transactionId, userId, communityId, points) => {
     // Mark as processed
     setProcessedTransactions(prev => [...prev, transactionId]);
     
@@ -83,12 +83,12 @@ export default function PendingTransactionsModal({
     
     // Notify parent component if callback exists
     if (onApprove) {
-      onApprove(transactionId);
+      onApprove(transactionId, userId, communityId, points);
     }
   };
   
   // Handle transaction rejection
-  const handleReject = (transactionId) => {
+  const handleReject = (transactionId, userId) => { // Add userId parameter
     // Mark as processed
     setProcessedTransactions(prev => [...prev, transactionId]);
     
@@ -106,7 +106,7 @@ export default function PendingTransactionsModal({
     
     // Notify parent component if callback exists
     if (onReject) {
-      onReject(transactionId);
+      onReject(transactionId, userId); // Pass userId to parent
     }
   };
 
@@ -262,7 +262,8 @@ function TransactionCard({ transaction, sequentialNumber, formatDate, onApprove,
     setError(null);
     try {
       if (onApprove) {
-        onApprove(transaction.id);
+        // Pass all required data for the transaction approval
+        onApprove(transaction.id, transaction.origin, transaction.destination, transaction.points);
       }
     } catch (err) {
       setError("Error al aprobar la transacción");
@@ -276,7 +277,7 @@ function TransactionCard({ transaction, sequentialNumber, formatDate, onApprove,
     setError(null);
     try {
       if (onReject) {
-        onReject(transaction.id);
+        onReject(transaction.id, transaction.origin); // Pass userId (origin) for reject
       }
     } catch (err) {
       setError("Error al rechazar la transacción");
@@ -400,11 +401,12 @@ function TransactionCard({ transaction, sequentialNumber, formatDate, onApprove,
 // Add this at the top of your CSS file or in your global styles
 // Assuming you're using a global stylesheet that supports these animations
 // If not, you'll need to implement these animations in your tailwind.config.js
-// 
+// If not, you'll need to implement these animations in your tailwind.config.js
 // @keyframes scale-in {
 //   from { opacity: 0; transform: scale(0.95); }
-//   to { opacity: 1; transform: scale(1); }
-// }
+//   to { opacity: 1; transform: scale(1); }5); }
+// } to { opacity: 1; transform: scale(1); }
 // .animate-scale-in {
 //   animation: scale-in 0.3s ease-out forwards;
+// } animation: scale-in 0.3s ease-out forwards;
 // }

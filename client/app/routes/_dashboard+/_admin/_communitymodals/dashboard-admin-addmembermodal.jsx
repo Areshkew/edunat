@@ -44,13 +44,22 @@ export default function AddMemberModal({ isOpen, onClose, communityId, existingM
   }, [isOpen, existingMemberIds]);
   
   const filteredUsers = users.filter(user => 
-    user.username?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.document_id?.toString().includes(searchQuery)
+    // Filter out users with id 0 or invalid ids
+    user.document_id && 
+    user.document_id !== 0 && 
+    user.document_id !== "0" && 
+    (
+      user.username?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.document_id?.toString().includes(searchQuery)
+    )
   );
   
   const handleAddMember = () => {
-    if (!selectedUser) return;
+    if (!selectedUser) {
+      setError("Por favor, selecciona un usuario válido");
+      return;
+    }
     
     // Use fetcher to avoid full page refresh
     fetcher.submit(
@@ -86,6 +95,18 @@ export default function AddMemberModal({ isOpen, onClose, communityId, existingM
     // Reset selected user after successful addition to allow adding another
     setSelectedUser(null);
   };
+
+  // Add fetcher state tracking
+  useEffect(() => {
+    if (fetcher.state === "submitting") {
+      // Handle loading state
+    } else if (fetcher.data) {
+      if (fetcher.data.error) {
+        setError(fetcher.data.error);
+        setTimeout(() => setError(null), 3000);
+      } 
+    }
+  }, [fetcher.state, fetcher.data]);
   
   // Función para incrementar el valor de los puntos
   const incrementPoints = () => {

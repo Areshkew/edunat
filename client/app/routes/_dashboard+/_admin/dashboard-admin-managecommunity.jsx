@@ -20,13 +20,15 @@ import {
   CheckCircle,
   XCircle,
   Coins,
-  Clock
+  Clock,
+  MessageCircle
 } from "lucide-react";
 import CreateCommunityModal from "./_communitymodals/dashboard-admin-createmodal";
 import EditCommunityModal from "./_communitymodals/dashboard-admin-editmodal";
 import MembersModal from "./_communitymodals/dashboard-admin-membersmodal";
 import DeleteCommunityModal from "./_communitymodals/dashboard-admin-deletemodal";
 import PendingTransactionsModal from "./_communitymodals/dashboard-admin-pendingtransactionsmodal";
+import AdminCommunityChat from "./_communitymodals/dashboard-admin-chat";
 
 export default function ManageCommunities({ communities: initialCommunities = [], totalMembers = 0, actionData, isSubmitting, users = [] }) {
   
@@ -54,6 +56,10 @@ export default function ManageCommunities({ communities: initialCommunities = []
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [isTransactionsModalOpen, setTransactionsModalOpen] = useState(false);
   
+  // **ARREGLADO: Estado para chat de comunidad con mejor control**
+  const [showCommunityChat, setShowCommunityChat] = useState(false);
+  const [selectedCommunityForChat, setSelectedCommunityForChat] = useState(null);
+
   const itemsPerPage = 12;
   const isMobileView = windowWidth < 640;
   const submit = useSubmit();
@@ -199,6 +205,34 @@ export default function ManageCommunities({ communities: initialCommunities = []
     setIsMembersModalOpen(true);
   };
   
+  // **ARREGLADO: Función para abrir chat de comunidad con datos correctos**
+  const handleOpenCommunityChat = (community) => {
+    // **FORZAR cierre del chat anterior si está abierto**
+    if (showCommunityChat) {
+      setShowCommunityChat(false);
+      setSelectedCommunityForChat(null);
+      
+      // Pequeño delay para asegurar limpieza completa
+      setTimeout(() => {
+        setSelectedCommunityForChat(community);
+        setShowCommunityChat(true);
+      }, 100);
+    } else {
+      setSelectedCommunityForChat(community);
+      setShowCommunityChat(true);
+    }
+  };
+
+  // **ARREGLADO: Función mejorada para cerrar chat**
+  const handleCloseCommunityChat = () => {
+    setShowCommunityChat(false);
+    
+    // **DELAY para asegurar que el WebSocket se cierre antes de limpiar el estado**
+    setTimeout(() => {
+      setSelectedCommunityForChat(null);
+    }, 200);
+  };
+
   // Replace the existing useEffect that watches fetcher with a more comprehensive one
   // that handles both member data and pending transactions
   useEffect(() => {
@@ -378,7 +412,7 @@ export default function ManageCommunities({ communities: initialCommunities = []
   };
   
   // Simplify the handleTransactionAction function
-  const handleTransactionAction = (transactionId, action) => {
+  const handleTransactionAction = (transactionId, userId, communityId, points, action) => {
     // Mark the transaction as processing locally to prevent multiple submissions
     setPendingTransactions(prev => 
       prev.map(t => t.id === transactionId ? { ...t, processing: true } : t)
@@ -389,7 +423,18 @@ export default function ManageCommunities({ communities: initialCommunities = []
     formData.append('_action', action === 'approve' ? 'approveTransaction' : 'rejectTransaction');
     formData.append('transactionId', transactionId);
     
-    // Submit using the Remix submit function once
+    // Add userId for both approve and reject (needed for notifications)
+    if (userId) {
+      formData.append('userId', userId);
+    }
+    
+    // Only add these fields for approval
+    if (action === 'approve') {
+      formData.append('communityId', communityId);
+      formData.append('points', points);
+    }
+    
+    // Submit using the Remix submit function
     submit(formData, { method: 'post' });
   };
 
@@ -665,6 +710,14 @@ export default function ManageCommunities({ communities: initialCommunities = []
                           >
                             <Info className="h-3.5 w-3.5 text-gray-600" />
                           </button>
+                          {/* **NUEVO: Botón de chat** */}
+                          <button 
+                            onClick={() => handleOpenCommunityChat(community)}
+                            className="p-1 bg-green-100 hover:bg-green-200 rounded-full"
+                            aria-label="Chat de comunidad"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+                          </button>
                           <button 
                             onClick={() => handleEdit(community)}
                             className="p-1 bg-blue-100 hover:bg-blue-200 rounded-full"
@@ -756,6 +809,14 @@ export default function ManageCommunities({ communities: initialCommunities = []
                       </button>
                       
                       <div className="flex items-center gap-2">
+                        {/* **NUEVO: Botón de chat para móvil** */}
+                        <button 
+                          onClick={() => handleOpenCommunityChat(community)}
+                          className="p-1 bg-green-100 hover:bg-green-200 rounded-full"
+                          aria-label="Chat de comunidad"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+                        </button>
                         <button 
                           onClick={() => handleEdit(community)}
                           className="p-1 bg-blue-100 hover:bg-blue-200 rounded-full"
@@ -934,8 +995,25 @@ export default function ManageCommunities({ communities: initialCommunities = []
         onClose={() => setShowPendingModal(false)}
         transactions={pendingTransactions}
         isLoading={loadingTransactions}
-        onApprove={(id) => handleTransactionAction(id, 'approve')}
-        onReject={(id) => handleTransactionAction(id, 'reject')}
+        onApprove={(id, userId, communityId, points) => 
+          handleTransactionAction(id, userId, communityId, points, 'approve')}
+        onReject={(id, userId) => handleTransactionAction(id, userId, null, null, 'reject')}
+      />
+
+      {/* **ARREGLADO: Chat de Comunidad Modal con datos correctos** */}
+      <AdminCommunityChat
+        isOpen={showCommunityChat}
+        onClose={handleCloseCommunityChat}
+        userData={{
+          // **ARREGLADO: Usar el document_id correcto del admin actual**
+          document_id: actionData?.userDocumentId || users?.find(u => u.role === 1)?.document_id || 1,
+          username: actionData?.username || "Admin"
+        }}
+        token={actionData?.token || ""} 
+        selectedCommunity={selectedCommunityForChat}
+        isDashboardLoaded={true}
+        // **NUEVO: Key para forzar recreación del componente**
+        key={selectedCommunityForChat?.id || 'no-community'}
       />
     </div>
   );

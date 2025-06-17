@@ -1,11 +1,16 @@
 import { useLoaderData, redirect, Link, Outlet, useFetcher } from "@remix-run/react";
-import { getSession } from "../../utils/session.server";
-import { useState, useEffect, useRef } from "react";
-import { User, LogOut, Settings, Bell, Menu, BookOpen } from "lucide-react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { User, LogOut, Settings, Bell, Menu, BookOpen, MessageCircle } from "lucide-react";
 import AdminDashboard from "./_admin/dashboard-admin-sidebar";
 import UserDashboard from "./_user/dashboard-user-sidebar";
+import ChatModal from "./dashboard.chats";
+import { useNotifications, NotificationModal } from "./dashboard.notifications";
 
+// Import getSession only in the loader function, not at the module level
 export async function loader({ request }) {
+  // Import inside the loader so it only runs on the server
+  const { getSession } = await import("../../utils/session.server");
+  
   const session = await getSession(request.headers.get("Cookie") || "");
   const token = session.get("token");
   const role = session.get("role");
@@ -22,7 +27,7 @@ export async function loader({ request }) {
       },
       // The API expects fields as a direct array, not wrapped in an object
       body: JSON.stringify([
-        "email", "username", "photo", "points"
+        "email", "username", "photo", "points","document_id"
       ])
     });
 
@@ -43,9 +48,46 @@ export default function Dashboard() {
   const { role, token, userData: initialUserData } = useLoaderData();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 0);
+  const [windowWidth, setWindowWidth] = useState(0);
   const [userData, setUserData] = useState(initialUserData);
   const userDataFetcher = useFetcher();
+  const [isBrowser, setIsBrowser] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [selectedChatUser, setSelectedChatUser] = useState(null);
+  
+  // Estado para notificaciones - pasado desde ChatModal
+  const [unreadCount, setUnreadCount] = useState(0);
+  
+  // Estado simple para el modal de notificaciones
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+
+  // **ARREGLADO: Memoizar userData para evitar cambios innecesarios**
+  const memoizedUserData = useMemo(() => userData, [userData?.document_id, userData?.email]);
+
+  // **ARREGLADO: Hook de notificaciones con userData memoizado (UNA SOLA VEZ)**
+  const {
+    notificationCount,
+    notifications,
+    loadingNotifications,
+    fetchNotifications,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    isMarkingRead,
+    isMarkingAllRead,
+    isDeleting
+  } = useNotifications(token, memoizedUserData);
+
+  useEffect(() => {
+    // Set isBrowser to true once component mounts
+    setIsBrowser(true);
+    if (typeof window !== 'undefined') {
+      setWindowWidth(window.innerWidth);
+      if (window.innerWidth >= 768) {
+        setSidebarOpen(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // Initialize with data from loader
@@ -93,6 +135,8 @@ export default function Dashboard() {
   }, [userDataFetcher.data, userDataFetcher.state]);
 
   useEffect(() => {
+    if (!isBrowser) return;
+    
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
       if (window.innerWidth >= 768) {
@@ -102,13 +146,49 @@ export default function Dashboard() {
       }
     };
 
-    // Set initial state
-    handleResize();
-
+    // Set initial state and add listener
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isBrowser]);
   
+  // Listen for chat modal opening requests
+  useEffect(() => {
+    const handleOpenChatModal = (event) => {
+      const { userId, username } = event.detail;
+      
+      if (userId && username) {
+        setSelectedChatUser({ userId: parseInt(userId), username });
+        setShowChatModal(true);
+      }
+    };
+
+    if (isBrowser) {
+      window.addEventListener('openChatModal', handleOpenChatModal);
+      return () => window.removeEventListener('openChatModal', handleOpenChatModal);
+    }
+  }, [isBrowser]);
+
+  const handleChatClick = () => {
+    // Limpiar notificaciones al abrir
+    setUnreadCount(0);
+    setSelectedChatUser(null);
+    setShowChatModal(true);
+  };
+
+  // **ARREGLADO: Handlers con useCallback**
+  const handleNotificationClick = useCallback(() => {
+    setShowNotificationModal(true);
+  }, []);
+
+  const handleNotificationModalClose = useCallback(() => {
+    setShowNotificationModal(false);
+  }, []);
+
+  // **NUEVO: Función para limpiar usuario seleccionado**
+  const handleClearSelectedUser = () => {
+    setSelectedChatUser(null);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm fixed w-full z-30">
@@ -140,8 +220,19 @@ export default function Dashboard() {
                   <span className="text-sm font-medium text-amber-800">{userData.points} Puntos</span>
                 </div>
               )}
-              <button className="text-gray-500 hover:text-gray-700">
+              <button 
+                onClick={handleNotificationClick}
+                className="relative text-gray-500 hover:text-gray-700 p-1"
+                title="Notificaciones"
+              >
                 <Bell size={18} />
+                {notificationCount > 0 && (
+                  <div className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-bold text-white px-1">
+                      {notificationCount > 9 ? '9+' : notificationCount}
+                    </span>
+                  </div>
+                )}
               </button>
               <UserMenu role={role} menuOpen={userMenuOpen} setMenuOpen={setUserMenuOpen} userData={userData} />
             </div>
@@ -149,7 +240,7 @@ export default function Dashboard() {
         </nav>
       </header>
 
-      <main className="pl-0 pr-4">
+      <main className="w-full">
         {role === 1 ? (
           <AdminLayout sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}>
             <Outlet />
@@ -160,6 +251,55 @@ export default function Dashboard() {
           </UserLayout> 
         )}
       </main>
+
+      {/* Floating Chat Button */}
+      <button
+        onClick={handleChatClick}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center z-40 group"
+        title="Abrir chats"
+      >
+        <MessageCircle className="h-6 w-6" />
+        
+        {/* Notificación de mensajes no leídos */}
+        {unreadCount > 0 && (
+          <div className="absolute -top-2 -right-2 min-w-[20px] h-5 bg-red-500 rounded-full flex items-center justify-center border-2 border-white">
+            <span className="text-xs font-bold text-white px-1">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          </div>
+        )}
+      </button>
+
+      {/* Chat Modal - Se auto-conecta en background */}
+      <ChatModal 
+        isOpen={showChatModal}
+        onClose={() => {
+          setShowChatModal(false);
+          setSelectedChatUser(null);
+        }}
+        userData={userData}
+        token={token}
+        selectedUser={selectedChatUser}
+        isDashboardLoaded={isBrowser && userData?.document_id}
+        onUnreadCountChange={setUnreadCount}
+        onClearSelectedUser={handleClearSelectedUser}
+      />
+
+      {/* **ARREGLADO: Modal de notificaciones** */}
+      <NotificationModal
+        isOpen={showNotificationModal}
+        onClose={handleNotificationModalClose}
+        notificationCount={notificationCount}
+        notifications={notifications}
+        loadingNotifications={loadingNotifications}
+        fetchNotifications={fetchNotifications}
+        markAsRead={markAsRead}
+        markAllAsRead={markAllAsRead}
+        deleteNotification={deleteNotification}
+        isMarkingRead={isMarkingRead}
+        isMarkingAllRead={isMarkingAllRead}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }
@@ -282,28 +422,140 @@ const MenuDropdown = ({ userData }) => (
   </div>
 );
 
-const AdminLayout = ({ children, sidebarOpen, setSidebarOpen }) => (
-  <div className="flex min-h-screen">
-    <div className={`${sidebarOpen ? 'block' : 'hidden'} md:block sticky top-0 h-screen z-20`}>
-      <AdminDashboard mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
-    </div>
-    <div className="flex-1 transition-all duration-200">
-      <div className="max-w-full mx-auto p-6 mt-14">
-        {children}
+const AdminLayout = ({ children, sidebarOpen, setSidebarOpen }) => {
+  // Track sidebar width for content adjust
+  const [sidebarWidth, setSidebarWidth] = useState(192); // Default expanded width (w-48)
+  const [isBrowser, setIsBrowser] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Set isBrowser to true once component mounts
+  useEffect(() => {
+    setIsBrowser(true);
+  }, []);
+  
+  // Listen for sidebar collapse/expand events from AdminDashboard
+  useEffect(() => {
+    if (!isBrowser) return;
+    
+    const handleSidebarChange = (e) => {
+      setSidebarWidth(e.detail.width);
+      setIsCollapsed(e.detail.collapsed);
+    };
+    
+    document.addEventListener('admin-sidebar-change', handleSidebarChange);
+    return () => {
+      document.removeEventListener('admin-sidebar-change', handleSidebarChange);
+    };
+  }, [isBrowser]);
+  
+  // Calculate margin based on viewport and sidebar state
+  const sidebarMargin = isBrowser && window.innerWidth >= 768 ? sidebarWidth : 0;
+  
+  return (
+    <div className="flex min-h-screen w-full overflow-x-hidden">
+      {/* Sidebar container - increased z-index to be above the overlay */}
+      <div className="fixed left-0 top-14 bottom-0 z-40" data-admin-sidebar>
+        <AdminDashboard mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
+      </div>
+      
+      {/* Mobile toggle button - only visible on small screens */}
+      {isBrowser && window.innerWidth < 768 && (
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="fixed left-4 top-4 z-50 bg-indigo-600 text-white p-2 rounded-lg shadow-lg md:hidden hidden"
+          aria-label={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
+        >
+          <Menu size={18} />
+        </button>
+      )}
+      
+      {/* Mobile overlay - Lower z-index than the sidebar */}
+      {sidebarOpen && isBrowser && window.innerWidth < 768 && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-40 z-30" 
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      
+      {/* Main content area */}
+      <div 
+        className="flex-1 min-w-0 transition-all duration-200"
+        style={{ marginLeft: sidebarMargin }}
+      >
+        <div className="w-full mx-auto p-6 mt-14">
+          {children}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
-const UserLayout = ({ children, sidebarOpen, setSidebarOpen }) => (
-  <div className="flex min-h-screen">
-    <div className={`${sidebarOpen ? 'block' : 'hidden'} md:block sticky top-0 h-screen z-20`}>
-      <UserDashboard mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
-    </div>
-    <div className="flex-1 transition-all duration-200">
-      <div className="max-w-full mx-auto p-6 mt-14">
-        {children}
+const UserLayout = ({ children, sidebarOpen, setSidebarOpen }) => {
+  // Track sidebar width for content adjust
+  const [sidebarWidth, setSidebarWidth] = useState(192); // Default expanded width (w-48)
+  const [isBrowser, setIsBrowser] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Set isBrowser to true once component mounts
+  useEffect(() => {
+    setIsBrowser(true);
+  }, []);
+  
+  // Listen for sidebar collapse/expand events from UserDashboard
+  useEffect(() => {
+    if (!isBrowser) return;
+    
+    const handleSidebarChange = (e) => {
+      setSidebarWidth(e.detail.width);
+      setIsCollapsed(e.detail.collapsed);
+    };
+    
+    document.addEventListener('user-sidebar-change', handleSidebarChange);
+    return () => {
+      document.removeEventListener('user-sidebar-change', handleSidebarChange);
+    };
+  }, [isBrowser]);
+  
+  // Calculate margin based on viewport and sidebar state
+  const sidebarMargin = isBrowser && window.innerWidth >= 768 ? sidebarWidth : 0;
+  
+  return (
+    <div className="flex min-h-screen w-full overflow-x-hidden">
+      {/* Sidebar container - increased z-index to be above the overlay */}
+      <div className="fixed left-0 top-14 bottom-0 z-40" data-user-sidebar>
+        <UserDashboard mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
+      </div>
+      
+      {/* Mobile toggle button - only visible on small screens */}
+      {isBrowser && window.innerWidth < 768 && (
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="fixed left-4 top-4 z-50 bg-indigo-600 text-white p-2 rounded-lg shadow-lg md:hidden hidden"
+          aria-label={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
+        >
+          <Menu size={18} />
+        </button>
+      )}
+      
+      {/* Mobile overlay - Lower z-index than the sidebar */}
+      {sidebarOpen && isBrowser && window.innerWidth < 768 && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-40 z-30" 
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      
+      {/* Main content area */}
+      <div 
+        className="flex-1 min-w-0 transition-all duration-200"
+        style={{ marginLeft: sidebarMargin }}
+      >
+        <div className="w-full mx-auto p-6 mt-14">
+          {children}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};

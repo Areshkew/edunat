@@ -1,4 +1,4 @@
-import { Links, LiveReload, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData, useRouteError, Link } from "@remix-run/react";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData, useRouteError, Link } from "@remix-run/react";
 import { json } from "@remix-run/node";
 import { useEffect } from "react";
 import { checkAndRefreshToken } from "./utils/session.server";
@@ -39,7 +39,6 @@ export default function App() {
         <Outlet />
         <ScrollRestoration />
         <Scripts />
-        <LiveReload />
       </body>
     </html>
   );

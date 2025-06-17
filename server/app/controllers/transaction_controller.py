@@ -25,6 +25,10 @@ class TransactionController(Injectable):
         self.route.add_api_route("/reject/{transaction_id}", self.reject_transaction, methods=["PUT"])
         self.route.add_api_route("/pending/community", self.get_pending_community_transactions, methods=["GET"])
         self.route.add_api_route("/user/pending/community", self.get_user_pending_community_transactions, methods=["GET"])
+        self.route.add_api_route("/user/destination/pending", self.get_user_destination_transactions, methods=["GET"])
+        self.route.add_api_route("/pending/users", self.get_pending_user_transactions, methods=["GET"])
+        self.route.add_api_route("/all", self.get_all_transactions, methods=["GET"])
+        self.route.add_api_route("/user/me", self.get_current_user_transactions, methods=["GET"])
 
     async def _verify_admin(self, request: Request) -> None:
         if request.state.payload.get("role") != 1:
@@ -38,7 +42,10 @@ class TransactionController(Injectable):
             # Crear una transacción con estado de espera de aprobación del administrador (2)
             data = transaction.model_dump()
             data["status"] = 2  # WaitingAdminApproval
-            data["origin"] = request.state.payload["sub"]
+            
+            # Si no se ha proporcionado un origin explícito, usar el ID del solicitante
+            if "origin" not in data or not data["origin"]:
+                data["origin"] = request.state.payload["sub"]
             
             new_transaction = await self.transactionservice.create_transaction(db, data)
             return {
@@ -97,41 +104,6 @@ class TransactionController(Injectable):
             # Si la transacción está en estado de espera de aprobación del admin, verificar que sea admin
             if transaction.status == 2:  # WaitingAdminApproval
                 await self._verify_admin(request)
-                
-                # Si es una transacción para unirse a una comunidad, procesar la unión y los puntos
-                try:
-                    user_id = transaction.origin
-                    community_id = transaction.destination  # En este punto, aún no tiene sufijo
-                    points = transaction.points
-                    token = request.headers.get("Authorization")
-                    
-                    # 1. Unir el usuario a la comunidad
-                    try:
-                        async with httpx.AsyncClient() as client:
-                            join_response = await client.post(
-                                f"http://localhost:8000/api/community/add/{community_id}/{user_id}",
-                                headers={"Authorization": token}
-                            )
-                            join_response.raise_for_status()
-                            # Nota: ignoramos errores si el usuario ya es miembro
-                    except Exception as e:
-                        print(f"Error al unir usuario a la comunidad: {str(e)}")
-                        # Continuamos con el proceso incluso si esto falla
-                    
-                    # 2. Otorgar puntos al usuario
-                    try:
-                        async with httpx.AsyncClient() as client:
-                            points_response = await client.post(
-                                f"http://localhost:8000/api/user/addp/{user_id}/{points}",
-                                headers={"Authorization": token}
-                            )
-                            points_response.raise_for_status()
-                    except Exception as e:
-                        print(f"Error al otorgar puntos al usuario: {str(e)}")
-                        # Continuamos con el proceso incluso si esto falla
-                except Exception as e:
-                    print(f"Error procesando acciones posteriores a la aprobación: {str(e)}")
-                    # Continuamos con la aprobación de la transacción
             
             # Si la transacción está en estado de espera de aprobación del usuario, verificar que sea el usuario destino
             elif transaction.status == 3:  # WaitingUserApproval
@@ -273,4 +245,108 @@ class TransactionController(Injectable):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error al obtener transacciones pendientes del usuario: {str(e)}"
+            )
+    
+    async def get_user_destination_transactions(self, request: Request, db: AsyncSession = Depends(get_db_session)) -> Dict[str, Any]:
+        """
+        Obtiene todas las transacciones con estado 3 (WaitingUserApproval) donde el usuario actual es el destinatario.
+        """
+        try:
+            # Get user ID from token
+            user_id = request.state.payload["sub"]
+            
+            # Get transactions with status 3 (WaitingUserApproval) where current user is destination
+            transaction_list = await self.transactionservice.get_user_destination_transactions(db, user_id)
+            
+            return {
+                "status": "success",
+                "message": "Transacciones pendientes como destinatario recuperadas con éxito",
+                "data": transaction_list
+            }
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al obtener transacciones pendientes como destinatario: {str(e)}"
+            )
+    
+    async def get_pending_user_transactions(self, request: Request, db: AsyncSession = Depends(get_db_session)) -> Dict[str, Any]:
+        """
+        Obtiene todas las transacciones pendientes (estado 3) donde el usuario actual es el destinatario.
+        """
+        try:
+            # Get user ID from token
+            user_id = request.state.payload["sub"]
+            
+            # Get transactions with status 3 (WaitingUserApproval) where current user is destination
+            transaction_list = await self.transactionservice.get_pending_user_transactions(db, user_id)
+            
+            return {
+                "status": "success",
+                "message": "Transacciones pendientes de usuario recuperadas con éxito",
+                "data": transaction_list
+            }
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al obtener transacciones pendientes: {str(e)}"
+            )
+    
+    async def get_all_transactions(self, request: Request, db: AsyncSession = Depends(get_db_session)) -> Dict[str, Any]:
+        """
+        Obtiene todas las transacciones en el sistema con detalles.
+        Solo accesible por administradores.
+        """
+        try:
+            # Verify admin permissions
+            await self._verify_admin(request)
+            
+            # Get all transactions with details including names
+            transactions = await self.transactionservice.get_all_transactions_with_details(db)
+            
+            # Get statistics
+            stats = await self.transactionservice.get_transaction_statistics(db)
+            
+            return {
+                "status": "success",
+                "message": "Transacciones recuperadas con éxito",
+                "data": transactions,
+                "statistics": stats
+            }
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al obtener las transacciones: {str(e)}"
+            )
+
+    async def get_current_user_transactions(self, request: Request, db: AsyncSession = Depends(get_db_session)) -> Dict[str, Any]:
+        """
+        Obtiene todas las transacciones del usuario actual, identificado solo por su token
+        """
+        try:
+            # Extraer user_id directamente del token
+            user_id = request.state.payload["sub"]
+            
+            # Get all transactions involving this user (as origin or destination)
+            # with proper name resolution and type identification
+            user_transactions = await self.transactionservice.get_user_transactions(db, user_id)
+            
+            return {
+                "status": "success",
+                "message": "Transacciones del usuario recuperadas con éxito",
+                "data": user_transactions,
+            }
+        except Exception as e:
+            print(f"Error en get_current_user_transactions: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al obtener las transacciones del usuario: {str(e)}"
             )

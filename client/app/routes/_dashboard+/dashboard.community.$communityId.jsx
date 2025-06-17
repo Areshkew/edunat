@@ -1,11 +1,13 @@
 import { json, redirect } from "@remix-run/node";
-import { useLoaderData, useActionData, Form, useNavigation, Link } from "@remix-run/react";
-import { useState, useEffect } from "react";
+import { useLoaderData, useActionData, Form, useNavigation, Link, useFetcher } from "@remix-run/react";
+import { useState, useEffect, useRef } from "react";
 import { getSession } from "../../utils/session.server"; 
+import UserProfileModal from "./_user/_usercommunitiesmodals/dashboard-user-profile";
 import { 
   CheckCircle, AlertCircle, X, Users, Info, ArrowLeft, Search, 
   UserPlus, Eye, Globe, Clock, LogOut, MessageCircle, User,
-  DollarSign, Send, PlusCircle
+  DollarSign, Send, PlusCircle, Loader2, Wifi, WifiOff, Download,
+  FileText, Image, Music, Video  // Agregar estos imports de lucide-react
 } from "lucide-react";
 
 export async function loader({ request, params }) {
@@ -47,7 +49,7 @@ export async function loader({ request, params }) {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(["document_id"]) // Only request the document_id field
+      body: JSON.stringify(["document_id", "username"]) // Request both document_id and username
     });
     
     if (!userDataResponse.ok) {
@@ -56,12 +58,28 @@ export async function loader({ request, params }) {
     
     const userData = await userDataResponse.json();
     
+    // Fetch chat history
+    const chatResponse = await fetch(`http://localhost:8000/api/chat/community-messages/${communityId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    
+    let chatHistory = [];
+    if (chatResponse.ok) {
+      const chatData = await chatResponse.json();
+      chatHistory = chatData.messages || [];
+    }
+    
     return json({
       community: communityData,
       members: membersData.data || [],
       userRole: session.get("user_role"),
       userId: session.get("user_id"),
-      userDocumentId: userData.document_id // Add the document_id to identify the user
+      userDocumentId: userData.document_id,
+      userUsername: userData.username,
+      chatHistory,
+      token // Pass token to frontend for WebSocket connection
     });
   } catch (error) {
     console.error("Error en loader:", error);
@@ -99,6 +117,25 @@ export async function action({ request, params }) {
     } catch (error) {
       return json({ error: "Error de conexión con el servidor" }, { status: 500 });
     }
+  } else if (actionType === "getUserProfile") {
+    const userId = formData.get("userId");
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/user/public-profile/${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Error al cargar el perfil del usuario');
+      }
+      
+      const profile = await response.json();
+      return json({ profile, success: true });
+    } catch (error) {
+      return json({ error: error.message, success: false });
+    }
   } else if (actionType === "initChat") {
     const userId = formData.get("userId");
     // Solo simulamos el inicio de chat, no hay funcionalidad real implementada
@@ -113,9 +150,10 @@ export async function action({ request, params }) {
 }
 
 export default function CommunityDetailsRoute() {
-  const { community, members = [], userRole, userId, userDocumentId, error } = useLoaderData();
+  const { community, members = [], userRole, userId, userDocumentId, userUsername, chatHistory = [], token, error } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
+  const profileFetcher = useFetcher();
   const isSubmitting = navigation.state === "submitting";
   
   const [activeTab, setActiveTab] = useState('details');
@@ -123,8 +161,160 @@ export default function CommunityDetailsRoute() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
   
+  // Chat state
+  const [messages, setMessages] = useState(chatHistory);
+  const [ws, setWs] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const messagesEndRef = useRef(null);
+  
+  // Profile modal state
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [profileData, setProfileData] = useState(null);
+  
   // Toast notification state
   const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
+  
+  // Initialize chat history
+  useEffect(() => {
+    setMessages(chatHistory);
+  }, [chatHistory]);
+  
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+  
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  
+  // WebSocket connection management
+  useEffect(() => {
+    if (activeTab === 'chat' && community?.id && userDocumentId && !ws) {
+      connectToChat();
+    }
+    
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [activeTab, community?.id, userDocumentId]);
+  
+  const connectToChat = () => {
+    if (isConnecting || isConnected) return;
+    
+    setIsConnecting(true);
+    
+    try {
+      // WebSocket optimizado: /ws/community/{community_id}/{user_id}
+      const websocket = new WebSocket(`ws://localhost:8000/api/chat/ws/community/${community.id}/${userDocumentId}`);
+      
+      websocket.onopen = () => {
+        console.log(`Connected to community ${community.id} chat as user ${userDocumentId}`);
+        setIsConnected(true);
+        setIsConnecting(false);
+        setWs(websocket);
+      };
+      
+      websocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === "history") {
+            // Cargar historial al conectarse
+            console.log(`Loaded ${data.messages.length} historical messages`);
+            setMessages(data.messages);
+          } else if (data.type === "message") {
+            // Nuevo mensaje en tiempo real
+            console.log('New message received:', data);
+            setMessages(prev => [...prev, data]);
+          } else if (data.type === "error") {
+            console.error("WebSocket error:", data.message);
+            showToast(data.message, 'error');
+          }
+        } catch (error) {
+          console.error('Error parsing message:', error);
+        }
+      };
+      
+      websocket.onclose = (event) => {
+        console.log(`Disconnected from community ${community.id} chat`, event.code, event.reason);
+        setIsConnected(false);
+        setIsConnecting(false);
+        setWs(null);
+      };
+      
+      websocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setIsConnecting(false);
+        showToast('Error de conexión al chat', 'error');
+      };
+      
+    } catch (error) {
+      console.error('Failed to connect to chat:', error);
+      setIsConnecting(false);
+      showToast('No se pudo conectar al chat', 'error');
+    }
+  };
+  
+  const sendMessage = () => {
+    if (!chatMessage.trim() || !ws || !isConnected) return;
+    
+    // JSON ultra simple: solo el texto del mensaje
+    const messageData = {
+      message_text: chatMessage.trim()
+    };
+    
+    try {
+      ws.send(JSON.stringify(messageData));
+      setChatMessage('');
+      console.log('Message sent:', messageData.message_text);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      showToast('Error al enviar mensaje', 'error');
+    }
+  };
+  
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+  
+  const formatMessageTime = (timestamp) => {
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffTime = Math.abs(now - date);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays <= 1) {
+        return date.toLocaleTimeString('es-ES', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+      } else if (diffDays <= 7) {
+        return date.toLocaleDateString('es-ES', { 
+          weekday: 'short',
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+      } else {
+        return date.toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+      }
+    } catch (e) {
+      return '';
+    }
+  };
   
   // Function to show toast notifications
   const showToast = (message, type = "success") => {
@@ -138,10 +328,11 @@ export default function CommunityDetailsRoute() {
   
   // Show toast when action completes
   useEffect(() => {
-    if (actionData?.success) {
-      showToast(actionData.message || "Operación completada con éxito", "success");
-      // Remove redirect logic from here, it's now handled in the action
-    } else if (actionData?.error) {
+    if (actionData?.success && actionData?.message && !actionData?.profile) {
+      // Solo mostrar toast para acciones que no sean getUserProfile
+      showToast(actionData.message, "success");
+    } else if (actionData?.error && !actionData?.profile) {
+      // Solo mostrar toast de error si no es una petición de perfil
       showToast(actionData.error, "error");
     }
   }, [actionData]);
@@ -152,6 +343,16 @@ export default function CommunityDetailsRoute() {
       showToast(error, "error");
     }
   }, [error]);
+  
+  // Handle profile fetcher data
+  useEffect(() => {
+    if (profileFetcher.data?.profile) {
+      setProfileData(profileFetcher.data.profile);
+    } else if (profileFetcher.data?.error) {
+      showToast(profileFetcher.data.error, "error");
+      setShowProfileModal(false);
+    }
+  }, [profileFetcher.data]);
   
   // Filter members based on search term and visibility
   const visibleMembers = members.filter(member => member.visibility !== 0);
@@ -279,6 +480,77 @@ export default function CommunityDetailsRoute() {
         </div>
       </div>
     );
+  };
+
+  const handleViewProfile = (userId) => {
+    setSelectedUserId(userId);
+    setProfileData(null); // Reset profile data
+    setShowProfileModal(true);
+    
+    // Usar fetcher para hacer la petición al action sin recargar la página
+    profileFetcher.submit(
+      {
+        _action: 'getUserProfile',
+        userId: userId
+      },
+      { method: 'post' }
+    );
+  };
+
+  // Get token from session storage for the modal
+  const getToken = () => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('token');
+    }
+    return null;
+  };
+
+  const handleInitChat = (userId, username) => {
+    console.log('🚀 Initiating chat with:', userId, username);
+    
+    // Ensure we have valid data
+    if (!userId || !username) {
+      console.error('Invalid chat initiation - missing userId or username');
+      return;
+    }
+    
+    // **MEJORADO: Trigger custom event with proper data types**
+    const chatEvent = new CustomEvent('openChatModal', { 
+      detail: { 
+        userId: parseInt(userId), 
+        username: String(username).trim()
+      } 
+    });
+    
+    console.log('📤 Dispatching openChatModal event:', chatEvent.detail);
+    window.dispatchEvent(chatEvent);
+  };
+
+  // Nueva función para iniciar transferencia rápida de puntos
+  const handleQuickTransfer = (userId, username) => {
+    console.log('🚀 Initiating quick transfer to:', userId, username);
+    
+    // Ensure we have valid data
+    if (!userId || !username) {
+      console.error('Invalid transfer initiation - missing userId or username');
+      return;
+    }
+    
+    // Navigate to transactions page and open modal with preselected user
+    // Store data in sessionStorage for cross-page communication
+    try {
+      sessionStorage.setItem('quickTransfer', JSON.stringify({
+        userId: userId,
+        username: username,
+        timestamp: new Date().getTime() // Add timestamp to ensure it's processed as a new request
+      }));
+      
+      // Navigate to transactions page
+      window.location.href = "/dashboard/my-transactions";
+    } catch (error) {
+      console.error('Error initiating quick transfer:', error);
+      showToast('Error al iniciar transferencia rápida', 'error');
+    }
   };
 
   return (
@@ -465,6 +737,7 @@ export default function CommunityDetailsRoute() {
                                 <div className="flex space-x-2">
                                   {/* View Profile */}
                                   <button
+                                    onClick={() => handleViewProfile(member.user_id)}
                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                     title="Ver perfil"
                                   >
@@ -473,14 +746,16 @@ export default function CommunityDetailsRoute() {
                                   
                                   {/* Start Chat */}
                                   <button
+                                    onClick={() => handleInitChat(member.user_id, member.username)}
                                     className="p-2 text-green-600 hover:bg-green-50 rounded-md transition-colors"
                                     title="Iniciar chat"
                                   >
                                     <MessageCircle className="h-4 w-4" />
                                   </button>
                                   
-                                  {/* Transfer Points */}
+                                  {/* Transfer Points - MODIFIED */}
                                   <button
+                                    onClick={() => handleQuickTransfer(member.user_id, member.username)}
                                     className="p-2 text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
                                     title="Transferir puntos"
                                   >
@@ -513,31 +788,159 @@ export default function CommunityDetailsRoute() {
               
               {/* New Community Chat Tab */}
               {activeTab === 'chat' && (
-                <div className="flex flex-col h-[500px]">
-                  {/* Empty chat state */}
-                  <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg border border-gray-200 mb-4">
-                    <MessageCircle className="h-12 w-12 text-gray-300 mb-3" />
-                    <h3 className="text-lg font-medium text-gray-700">Chat de la comunidad</h3>
-                    <p className="text-gray-500 text-sm text-center max-w-sm mt-1">
-                      No hay mensajes en el chat comunitario. ¡Sé el primero en iniciar una conversación!
-                    </p>
+                <div className="flex flex-col h-[600px]">
+                  {/* Chat Header */}
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-t-lg border-b">
+                    <div className="flex items-center space-x-3">
+                      <MessageCircle className="h-5 w-5 text-blue-500" />
+                      <h3 className="font-medium text-gray-900">Chat de {community.name}</h3>
+                    </div>
+                    
+                    {/* Connection Status */}
+                    <div className="flex items-center space-x-2">
+                      {isConnecting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                          <span className="text-sm text-gray-600">Conectando...</span>
+                        </>
+                      ) : isConnected ? (
+                        <>
+                          <Wifi className="h-4 w-4 text-green-500" />
+                          <span className="text-sm text-green-600">Conectado</span>
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="h-4 w-4 text-red-500" />
+                          <span className="text-sm text-red-600">Desconectado</span>
+                          <button
+                            onClick={connectToChat}
+                            className="ml-2 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                          >
+                            Reconectar
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                   
-                  {/* Message input */}
-                  <div className="flex items-center bg-white rounded-lg border border-gray-300 p-2">
-                    <input
-                      type="text"
-                      value={chatMessage}
-                      onChange={(e) => setChatMessage(e.target.value)}
-                      placeholder="Escribe un mensaje..."
-                      className="flex-1 border-0 focus:ring-0 focus:outline-none text-sm"
-                    />
-                    <button 
-                      className={`p-2 rounded-full ${chatMessage ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-400'}`}
-                      disabled={!chatMessage}
-                    >
-                      <Send className="h-4 w-4" />
-                    </button>
+                  {/* Messages Container */}
+                  <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-3">
+                    {messages.length > 0 ? (
+                      messages.map((message, index) => {
+                        const isOwnMessage = message.sender_id == userDocumentId; // Use == for type flexibility
+                        const showUsername = index === 0 || messages[index - 1]?.sender_id !== message.sender_id;
+                        
+                        return (
+                          <div key={message.id || index} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                              isOwnMessage 
+                                ? 'bg-blue-500 text-white' 
+                                : 'bg-white text-gray-900 border border-gray-200'
+                            }`}>
+                              {showUsername && !isOwnMessage && (
+                                <div className="text-xs font-medium text-gray-600 mb-1">
+                                  {message.sender_username || 'Usuario desconocido'}
+                                </div>
+                              )}
+                              
+                              {/* CORREGIDO: Detectar mensajes tipo archivo */}
+                              {(message.attachment_url || message.file_id || message.message_type === 'file' || message.message_text?.startsWith('📎 ')) ? (
+                                <div className="flex items-center space-x-2">
+                                  <div className={`p-1.5 rounded-md ${isOwnMessage ? 'bg-white/20' : 'bg-gray-100'}`}>
+                                    {getFileIcon(message.file_type || determineFileType(message.file_name || message.message_text))}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">
+                                      {message.file_name || message.message_text?.replace('📎 ', '') || 'Archivo adjunto'}
+                                    </p>
+                                    {message.file_size && (
+                                      <p className={`text-xs ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'}`}>
+                                        {formatFileSize(message.file_size)}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => handleFileDownload(
+                                      message.download_url || message.attachment_url, 
+                                      message.file_name || message.message_text?.replace('📎 ', '') || 'archivo'
+                                    )}
+                                    className={`p-1.5 rounded-md ${
+                                      isOwnMessage 
+                                        ? 'hover:bg-white/10 text-white' 
+                                        : 'hover:bg-gray-100 text-gray-600'
+                                    }`}
+                                    title="Descargar archivo"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="text-sm break-words">
+                                  {message.message_text}
+                                </div>
+                              )}
+                              
+                              <div className={`text-xs mt-1 ${
+                                isOwnMessage ? 'text-blue-100' : 'text-gray-500'
+                              }`}>
+                                {formatMessageTime(message.sent_at)}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full">
+                        <MessageCircle className="h-12 w-12 text-gray-300 mb-3" />
+                        <h3 className="text-lg font-medium text-gray-700">¡Inicia la conversación!</h3>
+                        <p className="text-gray-500 text-sm text-center max-w-sm mt-1">
+                          No hay mensajes en el chat comunitario. Sé el primero en saludar a tus compañeros.
+                        </p>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                  
+                  {/* Message Input */}
+                  <div className="p-4 bg-white border-t">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="text"
+                        value={chatMessage}
+                        onChange={(e) => setChatMessage(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        placeholder={isConnected ? "Escribe un mensaje..." : "Conectando al chat..."}
+                        disabled={!isConnected}
+                        className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+                        maxLength={200} // Límite de caracteres para mensajes
+                      />
+                      <button 
+                        onClick={sendMessage}
+                        disabled={!chatMessage.trim() || !isConnected}
+                        className={`p-2 rounded-lg transition-colors ${
+                          chatMessage.trim() && isConnected
+                            ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        }`}
+                        title="Enviar mensaje"
+                      >
+                        <Send className="h-5 w-5" />
+                      </button>
+                    </div>
+                    
+                    {!isConnected && (
+                      <div className="mt-2 text-xs text-amber-600 flex items-center">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Reconectando al chat...
+                      </div>
+                    )}
+                    
+                    {/* Character counter */}
+                    {chatMessage.length > 400 && (
+                      <div className="mt-1 text-xs text-gray-500 text-right">
+                        {chatMessage.length}/500 caracteres
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -592,6 +995,18 @@ export default function CommunityDetailsRoute() {
       
       {/* Show the leave confirmation modal when showLeaveModal is true */}
       {showLeaveModal && <LeaveConfirmationModal />}
+      
+      {/* User Profile Modal */}
+      <UserProfileModal 
+        isOpen={showProfileModal}
+        onClose={() => {
+          setShowProfileModal(false);
+          setProfileData(null);
+          setSelectedUserId(null);
+        }}
+        profileData={profileData}
+        loading={profileFetcher.state === "submitting"}
+      />
     </div>
   );
 }
@@ -629,3 +1044,69 @@ function calculateAge(dateString) {
     return "Fecha inválida";
   }
 }
+
+// AGREGAR estas nuevas funciones auxiliares para archivos:
+
+  // Función para manejar descarga de archivos
+  const handleFileDownload = async (downloadUrl, fileName) => {
+    try {
+      if (!downloadUrl) {
+        console.error('Error downloading file: No download URL provided');
+        showToast('Error: URL de descarga no disponible', 'error');
+        return;
+      }
+
+      // Usar la URL completa del backend
+      const backendUrl = downloadUrl.startsWith('http') 
+        ? downloadUrl 
+        : `http://localhost:8000${downloadUrl}`;
+      
+      console.log('Downloading file from:', backendUrl);
+      
+      // Crear un enlace temporal para descargar
+      const link = document.createElement('a');
+      link.href = backendUrl;
+      link.download = fileName || 'archivo_adjunto';
+      link.target = '_blank';
+      
+      // Agregar al DOM temporalmente y hacer click
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      showToast('Error al descargar el archivo', 'error');
+    }
+  };
+
+  const getFileIcon = (fileType) => {
+    switch(fileType) {
+      case 'images': return <Image className="h-4 w-4" />;
+      case 'audio': return <Music className="h-4 w-4" />;
+      case 'video': return <Video className="h-4 w-4" />;
+      default: return <FileText className="h-4 w-4" />;
+    }
+  };
+
+  const determineFileType = (fileName) => {
+    if (!fileName) return 'documents';
+    
+    const lowerName = fileName.toLowerCase();
+    if (/\.(jpg|jpeg|png|gif|bmp|webp)$/.test(lowerName)) {
+      return 'images';
+    } else if (/\.(mp3|wav|flac|aac|ogg)$/.test(lowerName)) {
+      return 'audio';
+    } else if (/\.(mp4|mov|avi|mkv|webm)$/.test(lowerName)) {
+      return 'video';
+    }
+    return 'documents';
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };

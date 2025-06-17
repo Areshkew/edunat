@@ -81,13 +81,35 @@ export async function checkAndRefreshToken(request) {
 }
 
 // Function to require authentication
-export async function requireAuth(request, redirectTo = "/login") {
+export async function requireAuth(request) {
   const session = await getSession(request.headers.get("Cookie") || "");
   const token = session.get("token");
 
   if (!token) {
-    throw redirect(redirectTo);
+    throw redirect("/login");
   }
 
-  return { session, token };
+  return { token, session };
+}
+
+export async function requireAdmin(request) {
+  const { token, session } = await requireAuth(request);
+  const role = session.get("role");
+
+  if (role !== 1) {
+    throw redirect("/dashboard/unauthorized");
+  }
+
+  return { token, session };
+}
+
+export async function requireUser(request) {
+  const { token, session } = await requireAuth(request);
+  const role = session.get("role");
+
+  if (role !== 0) {
+    throw redirect("/dashboard/unauthorized");
+  }
+
+  return { token, session };
 }
