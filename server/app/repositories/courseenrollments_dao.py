@@ -6,8 +6,8 @@ class CourseEnrollmentsDAO(Base):
     __tablename__ = 'course_enrollments'
 
     id = Column(Integer, primary_key=True, nullable=False)
-    user_id = Column(Integer, ForeignKey('users.document_id'), nullable=False)
-    course_id = Column(Integer, ForeignKey('courses.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.document_id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
+    course_id = Column(Integer, ForeignKey('courses.id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
     enrollment_date = Column(Date, nullable=False)
 
     # Relaciones

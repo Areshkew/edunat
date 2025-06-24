@@ -3,11 +3,16 @@ from fastapi.staticfiles import StaticFiles
 
 #TODO: Add app controllers
 from app.controllers.user_controller import UserController
+from app.controllers.community_controller import CommunityController
+from app.controllers.transaction_controller import TransactionController
+from app.controllers.course_controller import CourseController
+from app.controllers.chat_controller import ChatController
+from app.controllers.notification_controller import NotificationController
 
 #Middleware
 from app.middleware.auth_middleware import AuthMiddleware
 
-#Services
+#Service
 from app.services.user_service import UserService
 
 #Utils
@@ -22,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn, os
 
 #TODO @inject(Controllers...)
-@inject(UserController)
+@inject(UserController, CommunityController, TransactionController, CourseController, ChatController, NotificationController)
 class ServerBootstrap:
     """
         ServerBootstrap es responsable de inicializar el servidor.
@@ -36,6 +41,11 @@ class ServerBootstrap:
         self.app = app
         self.HOST = os.getenv("HOST")
         self.app.include_router(self.usercontroller.route, prefix='/api') 
+        self.app.include_router(self.communitycontroller.route, prefix='/api') 
+        self.app.include_router(self.transactioncontroller.route, prefix='/api')
+        self.app.include_router(self.coursecontroller.route, prefix='/api')
+        self.app.include_router(self.chatcontroller.route, prefix='/api/chat')
+        self.app.include_router(self.notificationcontroller.route, prefix='/api')
 
     def run(self):
         uvicorn.run(self.app, host=self.HOST, port=8000)

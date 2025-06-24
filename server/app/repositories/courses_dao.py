@@ -12,9 +12,11 @@ class CoursesDAO(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
     status = Column(Integer, nullable=False)  # 0-upcoming  1-in_progress  2-completed
+    cost = Column(Integer, default=0, nullable=False)  # Puntos necesarios para unirse
     created_at = Column(Date, nullable=False)
     updated_at = Column(Date, nullable=True)
 
     # Relaciones
     enrollments = relationship("CourseEnrollmentsDAO", back_populates="course_ref")
+    instructor_ref = relationship("UsersDAO", foreign_keys=[instructor], back_populates="courses_taught")
 

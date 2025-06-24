@@ -6,8 +6,8 @@ class UserCommunitiesDAO(Base):
     __tablename__ = 'user_communities'
 
     id = Column(Integer, primary_key=True, nullable=False)
-    community_id = Column(Integer, ForeignKey('communities.id'), nullable=False)
-    user_id = Column(Integer, ForeignKey('users.document_id'), nullable=False)
+    community_id = Column(Integer, ForeignKey('communities.id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.document_id', onupdate='CASCADE', ondelete='CASCADE'), nullable=False)
 
     # Relaciones
     user_ref = relationship("UsersDAO", back_populates="communities")

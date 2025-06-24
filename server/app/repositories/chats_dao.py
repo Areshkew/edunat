@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Date, ForeignKey, Enum, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Enum, Text
 from db.base_class import Base
 from sqlalchemy.orm import relationship
 
@@ -6,11 +6,11 @@ class ChatsDAO(Base):
     __tablename__ = 'chats'
 
     id = Column(Integer, primary_key=True, nullable=False)
-    sender_id = Column(Integer, ForeignKey('users.document_id'), nullable=False)
-    receiver_id = Column(Integer, ForeignKey('users.document_id'), nullable=False)
-    message_text = Column(String, nullable=False)
-    sent_at = Column(Date, nullable=False)
-    read_at = Column(Date, nullable=True)
+    sender_id = Column(Integer, ForeignKey('users.document_id', ondelete='CASCADE'), nullable=False)
+    receiver_id = Column(Integer, ForeignKey('users.document_id', ondelete='CASCADE'), nullable=False)
+    message_text = Column(Text, nullable=False)
+    sent_at = Column(DateTime, nullable=False)
+    read_at = Column(DateTime, nullable=True)
     attachment_url = Column(String, nullable=True)
 
     # Relaciones

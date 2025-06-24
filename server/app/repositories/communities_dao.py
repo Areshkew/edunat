@@ -7,6 +7,7 @@ class CommunitiesDAO(Base):
 
     id = Column(Integer, primary_key=True, nullable=False)
     name = Column(String, nullable=False)
+    about = Column(String)
     visibility = Column(Integer, nullable=False)  # 0-hidden 1-visible
     created_at = Column(Date, nullable=False)
     updated_at = Column(Date, nullable=True)
